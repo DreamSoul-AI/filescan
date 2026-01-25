@@ -5,15 +5,15 @@ usage() {
     echo "Usage: $0 [-n] [-p source_path] [-d dist_path] [-v version] [-P package_name]"
     echo "  -n: Do not install the generated package"
     echo "  -P: Package name (default: $PACKAGE_NAME)"
-    echo "  -v: Version (default: 0.0.1)"
-    echo "  -p: Source path (default: package name)"
-    echo "  -d: Dist path (default: dist)"
+    echo "  -v: Version (default: $VERSION)"
+    echo "  -p: Source path (default: $PACKAGE_NAME)"
+    echo "  -d: Dist path (default: $DIST_PATH)"
     exit 1
 }
 
 # Defaults
 INSTALL_PACKAGE=true
-PACKAGE_NAME="package"
+PACKAGE_NAME="filescan"
 VERSION="0.0.1"
 SOURCE_PATH=""
 DIST_PATH="dist"
