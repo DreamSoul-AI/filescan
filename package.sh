@@ -15,7 +15,7 @@ usage() {
 INSTALL_PACKAGE=true
 PACKAGE_NAME="filescan"
 VERSION="0.0.1"
-SOURCE_PATH=""
+SOURCE_PATH="src/$PACKAGE_NAME"
 DIST_PATH="dist"
 
 # Parse args
@@ -46,6 +46,15 @@ cp setup.bak.cfg setup.cfg
 # Update version
 sed -i "s/^version = .*/version = $VERSION/" setup.cfg
 
+# Stage package data
+echo "Staging package data"
+sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
+| grep '^[[:space:]]' \
+| sed 's/^[[:space:]]\+//' \
+| while read -r f; do
+    [ -f "$f" ] && cp "$f" "$SOURCE_PATH/"
+done
+
 echo "setup.cfg:"
 cat setup.cfg
 
@@ -75,6 +84,34 @@ if $INSTALL_PACKAGE; then
 else
     echo "Skipping installation"
 fi
+
+# Stage package data into dist directory
+echo "Staging package data into dist"
+sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
+| grep '^[[:space:]]' \
+| sed 's/^[[:space:]]\+//' \
+| while read -r f; do
+    if [ -f "$f" ]; then
+        mkdir -p "$(dirname "$DIST_PATH/$f")"
+        cp "$f" "$DIST_PATH/$f"
+    fi
+done
+
+# Zip dist output
+ZIP_NAME="${PACKAGE_NAME}-${VERSION}.zip"
+echo "Zipping dist"
+rm -f "$DIST_PATH/$ZIP_NAME"
+zip -r "$DIST_PATH/$ZIP_NAME" "$DIST_PATH" -x "$DIST_PATH/$ZIP_NAME"
+echo "Created $DIST_PATH/$ZIP_NAME"
+
+# Clean package data
+sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
+| grep '^[[:space:]]' \
+| sed 's/^[[:space:]]\+//' \
+| while read -r f; do
+    rm -f "$SOURCE_PATH/$f"
+done
+echo "Cleaned up package data"
 
 # Cleanup
 rm setup.cfg
