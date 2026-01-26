@@ -1,0 +1,16 @@
+# id: Unique integer ID for this node
+# parent_id: ID of parent node, or null for root
+# type: Node type: 'd' = directory, 'f' = file
+# name: Base name of the file or directory
+# size: File size in bytes; null for directories
+id,parent_id,type,name,size
+0,,d,data,
+1,0,d,checkpoints,
+2,1,f,camera_man.png,38783
+3,1,f,Sample_BeeMoved_48kHz16bit.m4a,1310720
+4,1,f,unused.json,112
+5,0,d,snapshots,
+6,5,f,config_test.txt,188
+7,5,f,lenna.png,473831
+8,5,f,run_log_002.docx,14327
+9,0,f,metadata.txt,159
