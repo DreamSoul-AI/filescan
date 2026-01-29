@@ -49,10 +49,14 @@ sed -i "s/^version = .*/version = $VERSION/" setup.cfg
 # Stage package data
 echo "Staging package data"
 sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
+| tr -d '\r' \
 | grep '^[[:space:]]' \
+| grep -v '=$' \
 | sed 's/^[[:space:]]\+//' \
 | while read -r f; do
-    [ -f "$f" ] && cp "$f" "$SOURCE_PATH/"
+    if [ -f "$f" ]; then
+        cp "$f" "$SOURCE_PATH/"
+    fi
 done
 
 echo "setup.cfg:"
@@ -100,13 +104,18 @@ done
 # Zip dist output
 ZIP_NAME="${PACKAGE_NAME}-${VERSION}.zip"
 echo "Zipping dist"
-rm -f "$DIST_PATH/$ZIP_NAME"
-zip -r "$DIST_PATH/$ZIP_NAME" "$DIST_PATH" -x "$DIST_PATH/$ZIP_NAME"
+(
+    cd "$DIST_PATH"
+    rm -f "$ZIP_NAME"
+    zip -r "$ZIP_NAME" . -x "$ZIP_NAME"
+)
 echo "Created $DIST_PATH/$ZIP_NAME"
 
 # Clean package data
 sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
+| tr -d '\r' \
 | grep '^[[:space:]]' \
+| grep -v '=$' \
 | sed 's/^[[:space:]]\+//' \
 | while read -r f; do
     rm -f "$SOURCE_PATH/$f"
