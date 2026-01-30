@@ -63,7 +63,7 @@ echo "setup.cfg:"
 cat setup.cfg
 
 # Clean previous builds
-rm -rf build "$DIST_PATH" *.egg-info
+rm -rf build "$DIST_PATH" src/*.egg-info
 mkdir -p "$DIST_PATH"
 
 # Build wheel
