@@ -1,6 +1,8 @@
 import argparse
 from pathlib import Path
+
 from ..scanner import Scanner
+from ..ast_scanner import AstScanner
 
 
 DEFAULT_IGNORE_NAME = ".fscanignore"
@@ -10,7 +12,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Recursively scan a directory and export its structure "
-            "as a flat graph (CSV or JSON)."
+            "or Python AST symbols as a flat graph (CSV or JSON)."
         )
     )
 
@@ -30,10 +32,16 @@ def main():
     )
 
     parser.add_argument(
+        "--ast",
+        action="store_true",
+        help="Scan Python AST symbols instead of filesystem structure",
+    )
+
+    parser.add_argument(
         "-o", "--output",
         help=(
-            "Output file path. "
-            "If omitted, defaults to <root_basename>.csv or .json"
+            "Output file path (base name). "
+            "If omitted, defaults to <root_name>.csv or .json"
         ),
     )
 
@@ -60,16 +68,27 @@ def main():
         candidate = Path.cwd() / DEFAULT_IGNORE_NAME
         ignore_file = candidate if candidate.exists() else None
 
-    scanner = Scanner(root, ignore_file=ignore_file)
+    # Select scanner
+    if args.ast:
+        scanner = AstScanner(
+            root,
+            ignore_file=ignore_file,
+            output=args.output,
+        )
+    else:
+        scanner = Scanner(
+            root,
+            ignore_file=ignore_file,
+            output=args.output,
+        )
+
     scanner.scan()
 
     # Dispatch output
     if args.format == "csv":
-        scanner.to_csv(args.output)
-
-    elif args.format == "json":
-        scanner.to_json(args.output)
-    return
+        scanner.to_csv()
+    else:
+        scanner.to_json()
 
 
 if __name__ == "__main__":

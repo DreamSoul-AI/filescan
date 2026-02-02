@@ -8,12 +8,12 @@ def main():
     root = Path("./data")
 
     # Optional ignore file (CWD-based, same logic as CLI)
-    ignore_file = Path(".fscanignore")
+    ignore_file = Path(".fscanignore_data")
     if not ignore_file.exists():
         ignore_file = None
 
     # Create scanner
-    scanner = fscan.Scanner(root, ignore_file=ignore_file)
+    scanner = fscan.Scanner(root, ignore_file=ignore_file, output='output/data')
 
     # Run scan
     scanner.scan()
@@ -24,6 +24,7 @@ def main():
 
     print("Scan completed.")
     print("Generated: data.csv, data.json")
+    return
 
 
 if __name__ == "__main__":

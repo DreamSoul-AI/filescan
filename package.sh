@@ -14,7 +14,7 @@ usage() {
 # Defaults
 INSTALL_PACKAGE=true
 PACKAGE_NAME="filescan"
-VERSION="0.0.1"
+VERSION="0.0.2"
 SOURCE_PATH="src/$PACKAGE_NAME"
 DIST_PATH="dist"
 

@@ -1,22 +1,44 @@
 # filescan
 
-**filescan** is a lightweight Python tool for **recursively scanning directory structures** and exporting them as a **flat, graph-style representation**.
+**filescan** is a lightweight Python tool for **scanning filesystem structures and Python ASTs** and exporting them as **flat, graph-style representations**.
 
-Instead of nested trees, `filescan` produces a **stable list of nodes with parent pointers**, making the output:
+Instead of nested trees, `filescan` produces **stable lists of nodes with parent pointers**, making the output:
 
 * easy to post-process
 * friendly for CSV / DataFrame / SQL pipelines
 * efficient for LLM ingestion and summarization
 
+`filescan` can operate at two levels:
+
+* **filesystem structure** (directories & files)
+* **Python semantic structure** (modules, classes, functions, methods)
+
+Both use the same flat graph design and export formats.
+
 
 
 ## Features
+
+### Filesystem scanning
 
 * Recursive directory traversal
 * Flat node list with explicit `parent_id`
 * Deterministic ordering
 * Optional `.gitignore`-style filtering
 * CSV and JSON export
+
+### Python AST scanning
+
+* Module, class, function, and method detection
+* Nested functions and classes supported
+* Stable symbol IDs with parent relationships
+* Best-effort function signature extraction
+* First-line docstring capture
+
+### General
+
+* Shared schema + export model
+* Same API for filesystem and AST scanners
 * Usable as **both a library and a CLI**
 * Designed for automation, data pipelines, and AI workflows
 
@@ -38,6 +60,8 @@ pip install -e .
 
 ## Quick start (CLI)
 
+### Filesystem scan (default)
+
 Scan the current directory and write a CSV:
 
 ```bash
@@ -56,11 +80,48 @@ Export as JSON:
 filescan ./data --format json
 ```
 
-Specify output path:
+Specify output base path:
 
 ```bash
-filescan ./data -o out/tree.csv
-filescan ./data --format json -o out/tree.json
+filescan ./data -o out/tree
+```
+
+This generates:
+
+```text
+out/
+├── tree.csv
+└── tree.json
+```
+
+
+
+### Python AST scan
+
+Scan Python source files and extract symbols:
+
+```bash
+filescan ./src --ast
+```
+
+Export AST symbols as JSON:
+
+```bash
+filescan ./src --ast --format json
+```
+
+Custom output path:
+
+```bash
+filescan ./src --ast -o out/symbols
+```
+
+This generates:
+
+```text
+out/
+├── symbols.csv
+└── symbols.json
 ```
 
 
@@ -78,6 +139,11 @@ filescan ./data --format json -o out/tree.json
 ./.fscanignore   (current working directory)
 ```
 
+Ignore rules apply to:
+
+* filesystem scanning
+* AST scanning (Python files are skipped if ignored)
+
 ### Example `.fscanignore`
 
 ```gitignore
@@ -91,11 +157,13 @@ __pycache__/
 
 
 
-## Output format
+## Output formats
 
-### Schema
+Both filesystem and AST scans produce **flat graphs** with schema metadata.
 
-Each node follows this schema:
+
+
+### Filesystem schema
 
 | Field       | Description                                 |
 | -- | - |
@@ -105,9 +173,7 @@ Each node follows this schema:
 | `name`      | Base name                                   |
 | `size`      | File size in bytes (`null` for directories) |
 
-
-
-### CSV output (default)
+#### CSV example
 
 ```csv
 # id: Unique integer ID for this node
@@ -122,50 +188,59 @@ id,parent_id,type,name,size
 
 
 
-### JSON output
+### Python AST schema
 
-```json
-{
-  "root": "/abs/path/to/data",
-  "schema": [
-    {"name": "id", "description": "Unique integer ID for this node"},
-    {"name": "parent_id", "description": "ID of parent node, or null for root"},
-    {"name": "type", "description": "Node type: 'd' = directory, 'f' = file"},
-    {"name": "name", "description": "Base name of the file or directory"},
-    {"name": "size", "description": "File size in bytes; null for directories"}
-  ],
-  "nodes": [
-    [0, null, "d", "data", null],
-    [1, 0, "f", "example.txt", 128]
-  ]
-}
-```
+| Field         | Description                                |
+| - |  |
+| `id`          | Unique integer ID for this symbol          |
+| `parent_id`   | Parent symbol ID (`null` for module)       |
+| `kind`        | `module` | `class` | `function` | `method` |
+| `name`        | Symbol name                                |
+| `module_path` | File path relative to scan root            |
+| `lineno`      | Starting line number (1-based)             |
+| `signature`   | Function or method signature (best-effort) |
+| `doc`         | First line of docstring, if any            |
+
+Nested functions and classes are represented naturally via `parent_id`.
 
 
 
 ## Library usage
 
+### Filesystem scanner
+
 ```python
-from pathlib import Path
 from filescan import Scanner
 
 scanner = Scanner(
     root="data",
-    ignore_file=".fscanignore"
+    ignore_file=".fscanignore",
 )
 
 scanner.scan()
-
 scanner.to_csv()    # -> ./data.csv
 scanner.to_json()   # -> ./data.json
 ```
 
-### Custom output paths
+
+
+### Python AST scanner
 
 ```python
-scanner.to_csv("out/tree.csv")
-scanner.to_json("out/tree.json")
+from filescan import AstScanner
+
+scanner = AstScanner(
+    root="src",
+    ignore_file=".fscanignore",
+    output="out/symbols",
+)
+
+scanner.scan()
+scanner.to_csv()
+scanner.to_json()
 ```
+
+
 
 ### Programmatic access
 
@@ -177,35 +252,36 @@ data = scanner.to_dict()
 ```
 
 
+
 ## Why `filescan`?
 
-Most directory trees are stored as deeply nested structures. While human-readable, they are verbose, hard to query, and inefficient for large-scale processing.
+Most filesystem and code structures are represented as deeply nested trees. While human-readable, they are verbose, hard to query, and inefficient for large-scale processing.
 
-`filescan` represents a filesystem as a **flat graph** because it is:
+`filescan` represents both **filesystems and codebases** as **flat graphs** because this format is:
 
 * **Compact and token-efficient**
-  A flat list with numeric IDs uses far fewer tokens than recursive trees, making it suitable for LLM context windows.
+  Flat lists with numeric IDs consume far fewer tokens than recursive trees, making them ideal for LLM context windows.
 
 * **Explicit and unambiguous**
-  Parent–child relationships are encoded directly via `parent_id`, without relying on nesting or indentation.
+  All relationships are encoded directly via `parent_id`.
 
 * **Easy to process**
-  Flat data works naturally with filtering, joins, and grouping.
+  Flat data works naturally with filtering, joins, grouping, and graph analysis.
 
-This design makes `filescan` especially suitable for:
+This makes `filescan` especially suitable for:
 
-* SQL and Pandas pipelines
-* Graph analysis and snapshot diffing
-* **LLM-based understanding and summarization of file structures**
+* SQL / Pandas / DuckDB pipelines
+* Static analysis and refactoring tools
+* Graph-based code understanding
+* **LLM-based reasoning and summarization of projects**
 
-In short, `filescan` favors **machine-friendly structure over visual trees**, enabling scalable analysis and AI-native workflows.
-
+In short, `filescan` favors **machine-friendly structure over visual trees**, enabling scalable, AI-native workflows.
 
 
 
 ## Development
 
-Project uses a `src/` layout.
+The project uses a `src/` layout.
 
 Examples can be run without installation:
 

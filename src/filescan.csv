@@ -1,0 +1,21 @@
+# id: Unique integer ID for this node
+# parent_id: ID of parent node, or null for root
+# type: Node type: 'd' = directory, 'f' = file
+# name: Base name of the file or directory
+# size: File size in bytes; null for directories
+id,parent_id,type,name,size
+0,,d,filescan,
+1,0,d,__pycache__,
+2,1,f,__init__.cpython-312.pyc,226
+3,1,f,scanner.cpython-312.pyc,10393
+4,1,f,utils.cpython-312.pyc,908
+5,0,d,commands,
+6,5,d,__pycache__,
+7,6,f,__init__.cpython-312.pyc,159
+8,5,f,__init__.py,0
+9,5,f,cli.py,1892
+10,0,f,__init__.py,89
+11,0,f,ast_scanner.py,9373
+12,0,f,base.py,2196
+13,0,f,scanner.py,1895
+14,0,f,utils.py,413
