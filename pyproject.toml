@@ -1,6 +1,20 @@
 [build-system]
-    requires = [
-        "setuptools>=80.0.0",
-        "wheel"
-    ]
-    build-backend = "setuptools.build_meta"
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filescan"
+version = "0.0.2"
+description = "Recursively scans a directory and outputs a flat, LLM-friendly file tree"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "pathspec>=0.10.3"
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
