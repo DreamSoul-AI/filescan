@@ -1,129 +1,81 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 usage() {
-    echo "Usage: $0 [-n] [-p source_path] [-d dist_path] [-v version] [-P package_name]"
-    echo "  -n: Do not install the generated package"
-    echo "  -P: Package name (default: $PACKAGE_NAME)"
-    echo "  -v: Version (default: $VERSION)"
-    echo "  -p: Source path (default: $PACKAGE_NAME)"
-    echo "  -d: Dist path (default: $DIST_PATH)"
-    exit 1
+  echo "Usage: $0 [-n] [-d dist_path] [-P package_name]"
+  echo "  -n: Do not install the generated package"
+  echo "  -d: Dist path (default: dist)"
+  echo "  -P: Package name (default: filescan)"
+  exit 1
 }
 
-# Defaults
 INSTALL_PACKAGE=true
-PACKAGE_NAME="filescan"
-VERSION="0.0.2"
-SOURCE_PATH="src/$PACKAGE_NAME"
 DIST_PATH="dist"
+PACKAGE_NAME="filescan"
+PKG_DIR="src/$PACKAGE_NAME"
+STAGE_FILES=("README.md" "README_zh.md" "LICENSE" "requirements.txt")
 
-# Parse args
-while getopts "np:d:v:P:h" opt; do
-    case "$opt" in
-        n) INSTALL_PACKAGE=false ;;
-        P) PACKAGE_NAME="$OPTARG" ;;
-        v) VERSION="$OPTARG" ;;
-        p) SOURCE_PATH="$OPTARG" ;;
-        d) DIST_PATH="$OPTARG" ;;
-        h) usage ;;
-        *) usage ;;
-    esac
+while getopts "nd:P:h" opt; do
+  case "$opt" in
+    n) INSTALL_PACKAGE=false ;;
+    d) DIST_PATH="$OPTARG" ;;
+    P) PACKAGE_NAME="$OPTARG"; PKG_DIR="src/$PACKAGE_NAME" ;;
+    h) usage ;;
+    *) usage ;;
+  esac
 done
 
-[ -z "$SOURCE_PATH" ] && SOURCE_PATH="$PACKAGE_NAME"
-
-echo "Packaging $PACKAGE_NAME version $VERSION"
-
-# Prepare build metadata
-if [ ! -f "setup.bak.cfg" ]; then
-    echo "setup.bak.cfg not found"
-    exit 1
+if [ ! -d "$PKG_DIR" ]; then
+  echo "❌ Package dir not found: $PKG_DIR"
+  exit 1
 fi
 
-cp setup.bak.cfg setup.cfg
-
-# Update version
-sed -i "s/^version = .*/version = $VERSION/" setup.cfg
-
-# Stage package data
-echo "Staging package data"
-sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
-| tr -d '\r' \
-| grep '^[[:space:]]' \
-| grep -v '=$' \
-| sed 's/^[[:space:]]\+//' \
-| while read -r f; do
-    if [ -f "$f" ]; then
-        cp "$f" "$SOURCE_PATH/"
-    fi
-done
-
-echo "setup.cfg:"
-cat setup.cfg
-
-# Clean previous builds
-rm -rf build "$DIST_PATH" src/*.egg-info
+echo "📦 Building $PACKAGE_NAME from pyproject.toml"
 mkdir -p "$DIST_PATH"
 
-# Build wheel
-echo "Building wheel..."
+# ---- Stage root files into package (so they become package data) ----
+
+echo "🧩 Staging package data into $PKG_DIR"
+STAGED=()
+for f in "${STAGE_FILES[@]}"; do
+  if [ -f "$f" ]; then
+    cp -f "$f" "$PKG_DIR/$f"
+    STAGED+=("$PKG_DIR/$f")
+  else
+    echo "⚠️  Missing file at repo root: $f (skipping)"
+  fi
+done
+
+cleanup() {
+  # Remove only what we staged
+  for p in "${STAGED[@]}"; do
+    rm -f "$p" || true
+  done
+}
+trap cleanup EXIT
+
+# ---- Clean previous builds ----
+rm -rf build "$DIST_PATH" *.egg-info src/*.egg-info
+
+# ---- Build wheel ----
+echo "🔧 Building wheel..."
 python -m build --wheel --outdir "$DIST_PATH"
 
-# Locate wheel
-WHL_FILE=$(ls "$DIST_PATH"/${PACKAGE_NAME}-${VERSION}-*.whl | head -n 1)
-
-if [ ! -f "$WHL_FILE" ]; then
-    echo "Wheel not found"
-    exit 1
+WHL_FILE="$(ls -1 "$DIST_PATH"/*.whl | head -n 1 || true)"
+if [ -z "$WHL_FILE" ] || [ ! -f "$WHL_FILE" ]; then
+  echo "❌ Wheel not found in $DIST_PATH"
+  exit 1
 fi
 
-echo "Built wheel: $WHL_FILE"
+echo "✅ Built wheel: $WHL_FILE"
 
-# Optional install
+# ---- Optional install ----
 if $INSTALL_PACKAGE; then
-    echo "Installing package..."
-    pip uninstall -y "$PACKAGE_NAME" >/dev/null 2>&1 || true
-    pip install "$WHL_FILE"
+  echo "📥 Installing $PACKAGE_NAME..."
+  pip uninstall -y "$PACKAGE_NAME" >/dev/null 2>&1 || true
+  pip install "$WHL_FILE"
 else
-    echo "Skipping installation"
+  echo "⏭️  Skipping installation"
 fi
 
-# Stage package data into dist directory
-echo "Staging package data into dist"
-sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
-| grep '^[[:space:]]' \
-| sed 's/^[[:space:]]\+//' \
-| while read -r f; do
-    if [ -f "$f" ]; then
-        mkdir -p "$(dirname "$DIST_PATH/$f")"
-        cp "$f" "$DIST_PATH/$f"
-    fi
-done
-
-# Zip dist output
-ZIP_NAME="${PACKAGE_NAME}-${VERSION}.zip"
-echo "Zipping dist"
-(
-    cd "$DIST_PATH"
-    rm -f "$ZIP_NAME"
-    zip -r "$ZIP_NAME" . -x "$ZIP_NAME"
-)
-echo "Created $DIST_PATH/$ZIP_NAME"
-
-# Clean package data
-sed -n '/^\[options\.package_data\]/,/^\[/p' setup.cfg \
-| tr -d '\r' \
-| grep '^[[:space:]]' \
-| grep -v '=$' \
-| sed 's/^[[:space:]]\+//' \
-| while read -r f; do
-    rm -f "$SOURCE_PATH/$f"
-done
-echo "Cleaned up package data"
-
-# Cleanup
-rm setup.cfg
-echo "Cleaned up setup.cfg"
-
-echo "Done."
+echo "🎉 Done."

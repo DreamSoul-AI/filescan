@@ -9,12 +9,33 @@ description = "Recursively scans a directory and outputs a flat, LLM-friendly fi
 readme = "README.md"
 requires-python = ">=3.10"
 
-dependencies = [
-    "pathspec>=0.10.3"
+license = "MIT"
+license-files = ["LICENSE"]
+
+authors = [
+  { name = "DreamSoul", email = "contact@dreamsoul.com" }
 ]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+
+dependencies = [
+  "pathspec>=0.10.3"
+]
+
+[project.urls]
+Homepage = "https://github.com/DreamSoul-AI/filescan"
+
+[project.scripts]
+filescan = "filescan.commands.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+filescan = ["README.md", "README_zh.md", "LICENSE", "default.fscanignore"]

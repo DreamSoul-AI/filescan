@@ -8,7 +8,7 @@ def main():
     root = Path("../src/filescan")
 
     # Optional ignore file (CWD-based, same logic as CLI)
-    ignore_file = Path(".fscanignore_self")
+    ignore_file = Path("self.fscanignore")
     if not ignore_file.exists():
         ignore_file = None
 

@@ -2,10 +2,13 @@ import csv
 import json
 from pathlib import Path
 from typing import List, Optional, Union, Any
+from importlib import resources
 
 
 class ScannerBase:
     SCHEMA: List[tuple] = []
+    DEFAULT_IGNORE_PATH = resources.files("filescan").joinpath("default.fscanignore")
+    OUTPUT_INFIX = ""
 
     def __init__(
             self,
@@ -18,7 +21,7 @@ class ScannerBase:
         self.ignore_file = (
             Path(ignore_file).expanduser().resolve()
             if ignore_file is not None
-            else None
+            else Path(self.DEFAULT_IGNORE_PATH)
         )
 
         self.output = (
@@ -48,6 +51,11 @@ class ScannerBase:
                 or self.root.resolve().stem
                 or "root"
         )
+
+        infix = self.OUTPUT_INFIX
+        if infix:
+            name = f"{name}_{infix}"
+
         return Path.cwd() / f"{name}{suffix}"
 
     def _resolve_output_path(
