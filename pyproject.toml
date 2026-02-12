@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "filescan"
-version = "0.0.2"
+version = "0.0.3"
 description = "Recursively scans a directory and outputs a flat, LLM-friendly file tree"
 readme = "README.md"
 requires-python = ">=3.10"
