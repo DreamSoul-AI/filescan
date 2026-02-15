@@ -8,19 +8,18 @@ from .utils import load_ignore_spec
 
 class AstScanner(ScannerBase):
     """
-    Python AST scanner that produces a flat, graph-style representation
-    of symbols in a Python project.
+    Python AST scanner that produces a property-graph representation
+    of semantic symbols.
 
-    Each row represents a semantic symbol:
-    - module
-    - class
-    - function
-    - method
+    Nodes:
+        module | class | function | method
+
+    Edges:
+        contains (parent → child)
     """
 
-    SCHEMA = [
-        ("id", "Unique integer ID for this symbol"),
-        ("parent_id", "ID of parent symbol, or null for module"),
+    NODE_SCHEMA = [
+        ("id", "Unique node ID"),
         ("kind", "Symbol kind: module | class | function | method"),
         ("name", "Symbol name"),
         ("qualified_name", "Fully qualified symbol name"),
@@ -41,16 +40,17 @@ class AstScanner(ScannerBase):
     ):
         super().__init__(root, ignore_file=ignore_file, output=output)
 
+        # Internal lookup maps
         self._id_to_kind: Dict[int, str] = {}
         self._id_to_name: Dict[int, str] = {}
 
-    # -------------------------------------------------------
+    # =====================================================
     # Public API
-    # -------------------------------------------------------
+    # =====================================================
 
     def scan(self) -> List[list]:
         """
-        Scan the project root for Python files and extract AST symbols.
+        Scan project root for Python files and extract AST symbols.
         """
         self.reset()
         self._id_to_kind.clear()
@@ -66,12 +66,9 @@ class AstScanner(ScannerBase):
 
         return self._nodes
 
-    # -------------------------------------------------------
-    # Internal helpers
-    # -------------------------------------------------------
-
-    def _next_symbol_id(self) -> int:
-        return self._next_id_value()
+    # =====================================================
+    # Internal Symbol Construction
+    # =====================================================
 
     def _add_symbol(
         self,
@@ -88,7 +85,11 @@ class AstScanner(ScannerBase):
         signature: str,
         doc: Optional[str],
     ) -> int:
-        sid = self._next_symbol_id()
+        """
+        Add a symbol node and create 'contains' edge if parent exists.
+        """
+        sid = self._next_node_id_value()
+
         self._id_to_kind[sid] = kind
         self._id_to_name[sid] = name
 
@@ -96,9 +97,8 @@ class AstScanner(ScannerBase):
         if doc:
             doc1 = doc.strip().splitlines()[0]
 
-        self._nodes.append([
+        self._add_node([
             sid,
-            parent_id,
             kind,
             name,
             qualified_name,
@@ -110,12 +110,20 @@ class AstScanner(ScannerBase):
             signature,
             doc1,
         ])
+
+        if parent_id is not None:
+            self._add_edge(parent_id, sid, "contains")
+
         return sid
 
     def _kind_of(self, symbol_id: Optional[int]) -> str:
         if symbol_id is None:
             return ""
         return self._id_to_kind.get(symbol_id, "")
+
+    # =====================================================
+    # File Processing
+    # =====================================================
 
     def _scan_file(self, path: Path) -> None:
         module_path = str(path.relative_to(self.root)).replace("\\", "/")
@@ -130,23 +138,24 @@ class AstScanner(ScannerBase):
         except SyntaxError:
             return
 
-        visitor = _SymbolVisitor(self, module_path=module_path)
+        visitor = _SymbolVisitor(self, module_path)
         visitor.visit(tree)
 
 
-# -------------------------------------------------------
+# =========================================================
 # AST Visitor
-# -------------------------------------------------------
+# =========================================================
 
 class _SymbolVisitor(ast.NodeVisitor):
+
     def __init__(self, scanner: AstScanner, module_path: str):
         self.scanner = scanner
         self.module_path = module_path
         self.stack: List[int] = []
 
-    # -------------------------
+    # -----------------------------------------------------
     # Helpers
-    # -------------------------
+    # -----------------------------------------------------
 
     def _current_qualified_name(self, name: str) -> str:
         parts = []
@@ -155,22 +164,20 @@ class _SymbolVisitor(ast.NodeVisitor):
         parts.append(name)
         return ".".join(parts)
 
-    # -------------------------
-    # Visitors
-    # -------------------------
+    # -----------------------------------------------------
+    # Node Visitors
+    # -----------------------------------------------------
 
     def visit_Module(self, node: ast.Module) -> None:
         name = self.module_path.replace("/", ".")
         if name.endswith(".py"):
             name = name[:-3]
 
-        qname = name
-
         mid = self.scanner._add_symbol(
             parent_id=None,
             kind="module",
             name=name,
-            qualified_name=qname,
+            qualified_name=name,
             module_path=self.module_path,
             lineno=1,
             end_lineno=getattr(node, "end_lineno", 1),
@@ -242,9 +249,9 @@ class _SymbolVisitor(ast.NodeVisitor):
         self.stack.pop()
 
 
-# -------------------------------------------------------
+# =========================================================
 # Signature Formatting
-# -------------------------------------------------------
+# =========================================================
 
 def _format_signature(
     node: Union[ast.FunctionDef, ast.AsyncFunctionDef],

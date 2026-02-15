@@ -6,24 +6,25 @@ from .utils import load_ignore_spec
 
 
 class Scanner(ScannerBase):
-    SCHEMA = [
-        ("id", "Unique integer ID for this node"),
-        ("parent_id", "ID of parent node, or null for root"),
+    NODE_SCHEMA = [
+        ("id", "Unique node ID"),
         ("type", "Node type: 'd' = directory, 'f' = file"),
         ("name", "Base name of the file or directory"),
         ("size", "File size in bytes; null for directories"),
     ]
 
-    # -------- public --------
+    # -------------------------------------------------
+    # Public
+    # -------------------------------------------------
 
     def scan(self) -> List[list]:
         """
-        Scan the filesystem tree rooted at ``self.root``.
+        Scan the filesystem tree rooted at `self.root`.
 
         Returns
         -------
         list of list
-            Flat list of nodes following ``SCHEMA`` order.
+            Flat list of nodes following NODE_SCHEMA order.
         """
         self.reset()
 
@@ -33,17 +34,20 @@ class Scanner(ScannerBase):
         self._walk(self.root, parent_id=None)
         return self._nodes
 
-    # -------- internal --------
+    # -------------------------------------------------
+    # Internal
+    # -------------------------------------------------
 
     def _walk(self, path: Path, parent_id: Optional[int]) -> None:
         """
-        Recursively walk the directory tree and collect nodes.
+        Recursively walk the directory tree and collect nodes + edges.
         """
+
         # Do not ignore the root itself
         if parent_id is not None and self._is_ignored(path):
             return
 
-        node_id = self._next_id_value()
+        node_id = self._next_node_id_value()
         is_dir = path.is_dir()
 
         size: Optional[int] = None
@@ -53,13 +57,17 @@ class Scanner(ScannerBase):
             except OSError:
                 pass
 
-        self._nodes.append([
+        # Add node
+        self._add_node([
             node_id,
-            parent_id,
             "d" if is_dir else "f",
             path.name,
             size,
         ])
+
+        # Add edge (parent -> child)
+        if parent_id is not None:
+            self._add_edge(parent_id, node_id, "contains")
 
         if not is_dir:
             return

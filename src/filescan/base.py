@@ -6,15 +6,22 @@ from importlib import resources
 
 
 class ScannerBase:
-    SCHEMA: List[tuple] = []
+    NODE_SCHEMA: List[tuple] = []
+    EDGE_SCHEMA: List[tuple] = [
+        ("id", "Unique edge ID"),
+        ("source", "Source node ID"),
+        ("target", "Target node ID"),
+        ("relation", "Edge relation type"),
+    ]
+
     DEFAULT_IGNORE_PATH = resources.files("filescan").joinpath("default.fscanignore")
     OUTPUT_INFIX = ""
 
     def __init__(
-            self,
-            root: Union[str, Path],
-            ignore_file: Optional[Union[str, Path]] = None,
-            output: Optional[Union[str, Path]] = None,
+        self,
+        root: Union[str, Path],
+        ignore_file: Optional[Union[str, Path]] = None,
+        output: Optional[Union[str, Path]] = None,
     ):
         self.root = Path(root).expanduser().resolve()
 
@@ -32,61 +39,41 @@ class ScannerBase:
 
         self._ignore_spec: Optional[Any] = None
         self._nodes: List[list] = []
-        self._next_id: int = 0
+        self._edges: List[list] = []
 
-    # -------- shared mechanics --------
+        self._next_node_id: int = 0
+        self._next_edge_id: int = 0
+
+    # =====================================================
+    # Core mechanics
+    # =====================================================
 
     def reset(self) -> None:
         self._nodes.clear()
-        self._next_id = 0
+        self._edges.clear()
+        self._next_node_id = 0
+        self._next_edge_id = 0
 
-    def _next_id_value(self) -> int:
-        nid = self._next_id
-        self._next_id += 1
+    def _next_node_id_value(self) -> int:
+        nid = self._next_node_id
+        self._next_node_id += 1
         return nid
 
-    def _default_output_path(self, suffix: str) -> Path:
-        name = (
-                self.root.name
-                or self.root.resolve().stem
-                or "root"
-        )
+    def _next_edge_id_value(self) -> int:
+        eid = self._next_edge_id
+        self._next_edge_id += 1
+        return eid
 
-        infix = self.OUTPUT_INFIX
-        if infix:
-            name = f"{name}_{infix}"
+    def _add_node(self, row: list) -> int:
+        self._nodes.append(row)
+        return row[0]
 
-        return Path.cwd() / f"{name}{suffix}"
-
-    def _resolve_output_path(
-            self,
-            output: Optional[Union[str, Path]],
-            suffix: str,
-    ) -> Path:
-        """
-        Resolve output path with the following priority:
-
-        1. explicit argument to to_*()
-        2. instance-level output (from __init__)
-        3. auto-generated default
-        """
-        if output is not None:
-            return Path(output)
-
-        if self.output is not None:
-            return self.output.with_suffix(suffix)
-
-        return self._default_output_path(suffix)
+    def _add_edge(self, source: int, target: int, relation: str) -> int:
+        eid = self._next_edge_id_value()
+        self._edges.append([eid, source, target, relation])
+        return eid
 
     def _is_ignored(self, path: Path) -> bool:
-        """
-        Check whether a filesystem path should be ignored according to
-        gitignore-style rules.
-
-        Paths are matched relative to ``self.root``.
-        Directories are normalized with a trailing slash to ensure patterns
-        like ``__pycache__/`` behave as expected.
-        """
         if self._ignore_spec is None:
             return False
 
@@ -101,57 +88,110 @@ class ScannerBase:
 
         return bool(self._ignore_spec.match_file(rel_str))
 
-    # -------- exports --------
+    # =====================================================
+    # Output resolution
+    # =====================================================
 
-    def to_dict(self) -> dict:
-        return {
-            "root": str(self.root),
-            "schema": [
-                {"name": name, "description": desc}
-                for name, desc in self.SCHEMA
-            ],
-            "nodes": self._nodes,
-        }
+    def _default_output_prefix(self) -> Path:
+        name = self.root.name or "root"
+        if self.OUTPUT_INFIX:
+            name = f"{name}_{self.OUTPUT_INFIX}"
+        return Path.cwd() / name
 
-    def to_json(
-            self,
-            output: Optional[Union[str, Path]] = None,
-            *,
-            indent: int = 2,
-            ensure_ascii: bool = False,
-    ) -> None:
-        if not self._nodes:
-            raise RuntimeError("No scan results available. Call scan() first.")
+    def _resolve_prefix(
+        self,
+        output: Optional[Union[str, Path]],
+    ) -> Path:
+        # explicit argument
+        if output is not None:
+            base = Path(output)
+        # constructor-level output
+        elif self.output is not None:
+            base = self.output
+        else:
+            return self._default_output_prefix()
 
-        path = self._resolve_output_path(output, ".json")
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if base.exists() and base.is_dir():
+            return base / (self.root.name or "root")
 
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(
-                self.to_dict(),
-                f,
-                indent=indent,
-                ensure_ascii=ensure_ascii,
-            )
+        return base.with_suffix("")
+
+    # =====================================================
+    # Export
+    # =====================================================
 
     def to_csv(
-            self,
-            output: Optional[Union[str, Path]] = None,
-            *,
-            include_schema_comment: bool = True,
+        self,
+        output: Optional[Union[str, Path]] = None,
+        *,
+        include_schema_comment: bool = True,
     ) -> None:
         if not self._nodes:
             raise RuntimeError("No scan results available. Call scan() first.")
 
-        path = self._resolve_output_path(output, ".csv")
+        prefix = self._resolve_prefix(output)
+
+        nodes_path = prefix.with_name(prefix.name + "_nodes.csv")
+        edges_path = prefix.with_name(prefix.name + "_edges.csv")
+
+        nodes_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._write_csv(
+            nodes_path,
+            self.NODE_SCHEMA,
+            self._nodes,
+            include_schema_comment,
+        )
+
+        self._write_csv(
+            edges_path,
+            self.EDGE_SCHEMA,
+            self._edges,
+            include_schema_comment,
+        )
+
+    def to_json(self, output: Optional[Union[str, Path]] = None) -> None:
+        if not self._nodes:
+            raise RuntimeError("No scan results available. Call scan() first.")
+
+        prefix = self._resolve_prefix(output)
+        path = prefix.with_name(prefix.name + ".json")
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        data = {
+            "root": str(self.root),
+            "node_schema": [
+                {"name": name, "description": desc}
+                for name, desc in self.NODE_SCHEMA
+            ],
+            "edge_schema": [
+                {"name": name, "description": desc}
+                for name, desc in self.EDGE_SCHEMA
+            ],
+            "nodes": self._nodes,
+            "edges": self._edges,
+        }
+
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+    # =====================================================
+    # CSV writer
+    # =====================================================
+
+    @staticmethod
+    def _write_csv(
+        path: Path,
+        schema: List[tuple],
+        rows: List[list],
+        include_schema_comment: bool,
+    ) -> None:
         with path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
 
             if include_schema_comment:
-                for name, desc in self.SCHEMA:
+                for name, desc in schema:
                     f.write(f"# {name}: {desc}\n")
 
-            writer.writerow([name for name, _ in self.SCHEMA])
-            writer.writerows(self._nodes)
+            writer.writerow([name for name, _ in schema])
+            writer.writerows(rows)
