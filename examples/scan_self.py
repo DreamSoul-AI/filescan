@@ -23,7 +23,7 @@ def main():
     scanner.to_json()
 
     print("Scan completed.")
-    print("Generated: filescan.csv, filescan.json")
+    print("Generated: filescan")
 
     # Create AST scanner
     ast_scanner = fscan.AstScanner(root,ignore_file=ignore_file,output="output/filescan_ast")
@@ -35,7 +35,7 @@ def main():
     ast_scanner.to_json()
 
     print("AST scan completed.")
-    print("Generated: filescan_ast.csv, filescan_ast.json")
+    print("Generated: filescan_ast")
     return
 
 

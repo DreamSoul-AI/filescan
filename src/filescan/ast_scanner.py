@@ -1,4 +1,4 @@
-import ast
+import astroid
 from pathlib import Path
 from typing import List, Optional, Union, Dict
 
@@ -8,28 +8,29 @@ from .utils import load_ignore_spec
 
 class AstScanner(ScannerBase):
     """
-    Python AST scanner that produces a property-graph representation
-    of semantic symbols.
-
-    Nodes:
-        module | class | function | method
-
-    Edges:
-        contains (parent → child)
+    Astroid-powered semantic scanner.
+    Produces cross-file semantic property graph.
     """
 
     NODE_SCHEMA = [
         ("id", "Unique node ID"),
-        ("kind", "Symbol kind: module | class | function | method"),
+        ("kind", "module | class | function | method"),
         ("name", "Symbol name"),
         ("qualified_name", "Fully qualified symbol name"),
         ("module_path", "Module file path relative to scan root"),
-        ("lineno", "Starting line number (1-based)"),
-        ("end_lineno", "Ending line number (inclusive)"),
-        ("col_offset", "Starting column offset (0-based)"),
-        ("end_col_offset", "Ending column offset (0-based)"),
-        ("signature", "Function or method signature (best-effort)"),
-        ("doc", "First line of docstring, if any"),
+        ("lineno", "Starting line number"),
+        ("end_lineno", "Ending line number"),
+        ("signature", "Function signature"),
+        ("doc", "First line of docstring"),
+    ]
+
+    EDGE_SCHEMA = [
+        ("id", "Unique edge ID"),
+        ("source", "Source node ID"),
+        ("target", "Target node ID"),
+        ("relation", "contains | imports | calls | inherits | references"),
+        ("lineno", "Line number where relation occurs"),
+        ("end_lineno", "End line number where relation occurs"),
     ]
 
     def __init__(
@@ -38,60 +39,155 @@ class AstScanner(ScannerBase):
         ignore_file: Optional[Union[str, Path]] = None,
         output: Optional[Union[str, Path]] = None,
     ):
-        super().__init__(root, ignore_file=ignore_file, output=output)
+        super().__init__(root, ignore_file, output)
 
-        # Internal lookup maps
-        self._id_to_kind: Dict[int, str] = {}
-        self._id_to_name: Dict[int, str] = {}
+        self._qualified_name_to_id: Dict[str, int] = {}
+        self._ast_modules: Dict[str, astroid.Module] = {}
+        self._module_imports: Dict[str, Dict[str, str]] = {}
 
     # =====================================================
     # Public API
     # =====================================================
 
     def scan(self) -> List[list]:
-        """
-        Scan project root for Python files and extract AST symbols.
-        """
         self.reset()
-        self._id_to_kind.clear()
-        self._id_to_name.clear()
+        self._qualified_name_to_id.clear()
+        self._ast_modules.clear()
+        self._module_imports.clear()
 
-        if self._ignore_spec is None and self.ignore_file is not None:
+        if self._ignore_spec is None and self.ignore_file:
             self._ignore_spec = load_ignore_spec(self.ignore_file)
 
+        # PASS 1 — Collect definitions + imports
         for path in sorted(self.root.rglob("*.py")):
             if self._is_ignored(path):
                 continue
-            self._scan_file(path)
+            self._collect_definitions(path)
+
+        # PASS 2 — Resolve semantic relationships
+        for module_name, module in self._ast_modules.items():
+            self._resolve_references(module_name, module)
 
         return self._nodes
 
     # =====================================================
-    # Internal Symbol Construction
+    # Module name resolution
     # =====================================================
+
+    def _compute_module_name(self, path: Path) -> str:
+        rel = path.relative_to(self.root)
+        rel_no_suffix = rel.with_suffix("")
+        parts = list(rel_no_suffix.parts)
+
+        if parts and parts[-1] == "__init__":
+            parts = parts[:-1]
+
+        return ".".join(parts)
+
+    # =====================================================
+    # PASS 1 — Definitions + Import Map
+    # =====================================================
+
+    def _collect_definitions(self, path: Path):
+        module_path = str(path.relative_to(self.root)).replace("\\", "/")
+        module_name = self._compute_module_name(path)
+
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return
+
+        try:
+            module = astroid.parse(
+                text,
+                module_name=module_name,
+                path=str(path),
+            )
+        except Exception:
+            return
+
+        self._ast_modules[module_name] = module
+
+        import_map: Dict[str, str] = {}
+
+        for node in module.nodes_of_class(astroid.ImportFrom):
+            for name, alias in node.names:
+                local_name = alias or name
+                full_name = f"{node.modname}.{name}"
+                import_map[local_name] = full_name
+
+        for node in module.nodes_of_class(astroid.Import):
+            for name, alias in node.names:
+                local_name = alias or name.split(".")[-1]
+                import_map[local_name] = name
+
+        self._module_imports[module_name] = import_map
+
+        # Add module node
+        mid = self._add_symbol(
+            parent_id=None,
+            kind="module",
+            name=module_name,
+            qualified_name=module_name,
+            module_path=module_path,
+            lineno=1,
+            end_lineno=1,
+            signature="",
+            doc=module.doc,
+        )
+
+        for node in module.body:
+            self._visit_definition(node, mid, module_path)
+
+    def _visit_definition(self, node, parent_id, module_path):
+        if isinstance(node, astroid.ClassDef):
+            cid = self._add_symbol(
+                parent_id,
+                "class",
+                node.name,
+                node.qname(),
+                module_path,
+                node.lineno,
+                node.end_lineno,
+                "",
+                node.doc,
+            )
+
+            for child in node.body:
+                self._visit_definition(child, cid, module_path)
+
+        elif isinstance(node, astroid.FunctionDef):
+            kind = (
+                "method"
+                if isinstance(node.parent, astroid.ClassDef)
+                else "function"
+            )
+
+            self._add_symbol(
+                parent_id,
+                kind,
+                node.name,
+                node.qname(),
+                module_path,
+                node.lineno,
+                node.end_lineno,
+                node.args.as_string(),
+                node.doc,
+            )
 
     def _add_symbol(
         self,
-        *,
-        parent_id: Optional[int],
-        kind: str,
-        name: str,
-        qualified_name: str,
-        module_path: str,
-        lineno: int,
-        end_lineno: int,
-        col_offset: int,
-        end_col_offset: int,
-        signature: str,
-        doc: Optional[str],
-    ) -> int:
-        """
-        Add a symbol node and create 'contains' edge if parent exists.
-        """
+        parent_id,
+        kind,
+        name,
+        qualified_name,
+        module_path,
+        lineno,
+        end_lineno,
+        signature,
+        doc,
+    ):
         sid = self._next_node_id_value()
-
-        self._id_to_kind[sid] = kind
-        self._id_to_name[sid] = name
 
         doc1 = ""
         if doc:
@@ -105,186 +201,190 @@ class AstScanner(ScannerBase):
             module_path,
             lineno,
             end_lineno,
-            col_offset,
-            end_col_offset,
             signature,
             doc1,
         ])
+
+        self._qualified_name_to_id[qualified_name] = sid
 
         if parent_id is not None:
             self._add_edge(parent_id, sid, "contains")
 
         return sid
 
-    def _kind_of(self, symbol_id: Optional[int]) -> str:
-        if symbol_id is None:
-            return ""
-        return self._id_to_kind.get(symbol_id, "")
+    def _add_edge(
+            self,
+            source: int,
+            target: int,
+            relation: str,
+            lineno: Optional[int] = None,
+            end_lineno: Optional[int] = None,
+    ) -> int:
+        eid = self._next_edge_id_value()
+        self._edges.append([
+            eid,
+            source,
+            target,
+            relation,
+            lineno,
+            end_lineno,
+        ])
+        return eid
 
     # =====================================================
-    # File Processing
+    # PASS 2 — Semantic Resolution
     # =====================================================
 
-    def _scan_file(self, path: Path) -> None:
-        module_path = str(path.relative_to(self.root)).replace("\\", "/")
+    def _resolve_caller_id(self, node) -> Optional[int]:
+        """
+        Resolve the correct caller symbol for a given AST node.
+        Only valid named scopes are considered:
+        - FunctionDef
+        - ClassDef
+        - Module
+        """
 
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            return
+        scope = node.scope()
 
-        try:
-            tree = ast.parse(text, filename=module_path)
-        except SyntaxError:
-            return
+        # Only allow scopes that correspond to symbols we created
+        if isinstance(scope, astroid.FunctionDef):
+            qname = scope.qname()
 
-        visitor = _SymbolVisitor(self, module_path)
-        visitor.visit(tree)
+        elif isinstance(scope, astroid.ClassDef):
+            qname = scope.qname()
 
+        elif isinstance(scope, astroid.Module):
+            qname = scope.name  # module name
 
-# =========================================================
-# AST Visitor
-# =========================================================
+        else:
+            # Ignore ListComp, Lambda, GeneratorExp, etc.
+            return None
 
-class _SymbolVisitor(ast.NodeVisitor):
+        return self._qualified_name_to_id.get(qname)
 
-    def __init__(self, scanner: AstScanner, module_path: str):
-        self.scanner = scanner
-        self.module_path = module_path
-        self.stack: List[int] = []
+    def _resolve_references(self, module_name: str, module: astroid.Module):
+        import_map = self._module_imports.get(module_name, {})
 
-    # -----------------------------------------------------
-    # Helpers
-    # -----------------------------------------------------
+        # -------------------------
+        # IMPORTS (structural)
+        # -------------------------
+        module_id = self._qualified_name_to_id.get(module_name)
 
-    def _current_qualified_name(self, name: str) -> str:
-        parts = []
-        for sid in self.stack:
-            parts.append(self.scanner._id_to_name[sid])
-        parts.append(name)
-        return ".".join(parts)
+        for local, full in import_map.items():
+            self._maybe_link(module_id, full, "imports")
 
-    # -----------------------------------------------------
-    # Node Visitors
-    # -----------------------------------------------------
+        # -------------------------
+        # CALLS (function-level)
+        # -------------------------
+        for node in module.nodes_of_class(astroid.Call):
+            caller_id = self._resolve_caller_id(node)
+            if caller_id is None:
+                continue
 
-    def visit_Module(self, node: ast.Module) -> None:
-        name = self.module_path.replace("/", ".")
-        if name.endswith(".py"):
-            name = name[:-3]
+            try:
+                for inferred in node.func.infer():
+                    if hasattr(inferred, "qname"):
+                        self._maybe_link(
+                            caller_id,
+                            inferred.qname(),
+                            "calls",
+                            lineno=node.lineno,
+                            end_lineno=getattr(node, "end_lineno", node.lineno),
+                        )
+            except Exception:
+                continue
 
-        mid = self.scanner._add_symbol(
-            parent_id=None,
-            kind="module",
-            name=name,
-            qualified_name=name,
-            module_path=self.module_path,
-            lineno=1,
-            end_lineno=getattr(node, "end_lineno", 1),
-            col_offset=0,
-            end_col_offset=0,
-            signature="",
-            doc=ast.get_docstring(node),
-        )
+        # -------------------------
+        # INHERITANCE (structural)
+        # -------------------------
+        for node in module.nodes_of_class(astroid.ClassDef):
+            child_id = self._qualified_name_to_id.get(node.qname())
+            if not child_id:
+                continue
 
-        self.stack.append(mid)
-        self.generic_visit(node)
-        self.stack.pop()
+            for base in node.bases:
+                base_name = None
 
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        parent_id = self.stack[-1] if self.stack else None
-        qname = self._current_qualified_name(node.name)
+                if isinstance(base, astroid.Name):
+                    base_name = base.name
+                elif isinstance(base, astroid.Attribute):
+                    base_name = base.attrname
 
-        cid = self.scanner._add_symbol(
-            parent_id=parent_id,
-            kind="class",
-            name=node.name,
-            qualified_name=qname,
-            module_path=self.module_path,
-            lineno=node.lineno,
-            end_lineno=getattr(node, "end_lineno", node.lineno),
-            col_offset=node.col_offset,
-            end_col_offset=getattr(node, "end_col_offset", node.col_offset),
-            signature="",
-            doc=ast.get_docstring(node),
-        )
+                if not base_name:
+                    continue
 
-        self.stack.append(cid)
-        self.generic_visit(node)
-        self.stack.pop()
+                # Imported base
+                if base_name in import_map:
+                    self._maybe_link(
+                        child_id,
+                        import_map[base_name],
+                        "inherits",
+                        lineno=node.lineno,
+                        end_lineno=node.lineno,
+                    )
+                    continue
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._handle_function(node)
+                # Same-module base
+                local_candidate = f"{module_name}.{base_name}"
+                if local_candidate in self._qualified_name_to_id:
+                    self._add_edge(
+                        child_id,
+                        self._qualified_name_to_id[local_candidate],
+                        "inherits",
+                        lineno=node.lineno,
+                        end_lineno=node.lineno,
+                    )
 
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._handle_function(node)
+        # -------------------------
+        # REFERENCES (function-level)
+        # -------------------------
+        for node in module.nodes_of_class(astroid.Name):
+            caller_id = self._resolve_caller_id(node)
+            if caller_id is None:
+                continue
 
-    def _handle_function(
+            symbol = node.name
+
+            # Imported reference
+            if symbol in import_map:
+                self._maybe_link(
+                    caller_id,
+                    import_map[symbol],
+                    "references",
+                    lineno=node.lineno,
+                    end_lineno=node.lineno,
+                )
+                continue
+
+            # Same-module reference
+            local_candidate = f"{module_name}.{symbol}"
+            if local_candidate in self._qualified_name_to_id:
+                self._add_edge(
+                    caller_id,
+                    self._qualified_name_to_id[local_candidate],
+                    "references",
+                    lineno=node.lineno,
+                    end_lineno=node.lineno,
+                )
+
+    # =====================================================
+    # Edge helper
+    # =====================================================
+
+    def _maybe_link(
         self,
-        node: Union[ast.FunctionDef, ast.AsyncFunctionDef],
-    ) -> None:
-        parent_id = self.stack[-1] if self.stack else None
-        parent_kind = self.scanner._kind_of(parent_id)
-
-        kind = "method" if parent_kind == "class" else "function"
-        sig = _format_signature(node)
-        qname = self._current_qualified_name(node.name)
-
-        fid = self.scanner._add_symbol(
-            parent_id=parent_id,
-            kind=kind,
-            name=node.name,
-            qualified_name=qname,
-            module_path=self.module_path,
-            lineno=node.lineno,
-            end_lineno=getattr(node, "end_lineno", node.lineno),
-            col_offset=node.col_offset,
-            end_col_offset=getattr(node, "end_col_offset", node.col_offset),
-            signature=sig,
-            doc=ast.get_docstring(node),
-        )
-
-        self.stack.append(fid)
-        self.generic_visit(node)
-        self.stack.pop()
-
-
-# =========================================================
-# Signature Formatting
-# =========================================================
-
-def _format_signature(
-    node: Union[ast.FunctionDef, ast.AsyncFunctionDef],
-) -> str:
-    """
-    Best-effort static signature formatter.
-    No evaluation, no imports, no defaults rendering.
-    """
-
-    def arg_name(a: ast.arg) -> str:
-        return a.arg
-
-    parts: List[str] = []
-
-    posonly = getattr(node.args, "posonlyargs", [])
-    for a in posonly:
-        parts.append(arg_name(a))
-    if posonly:
-        parts.append("/")
-
-    for a in node.args.args:
-        parts.append(arg_name(a))
-
-    if node.args.vararg:
-        parts.append("*" + node.args.vararg.arg)
-
-    if node.args.kwonlyargs:
-        if not node.args.vararg:
-            parts.append("*")
-        for a in node.args.kwonlyargs:
-            parts.append(arg_name(a))
-
-    if node.args.kwarg:
-        parts.append("**" + node.args.kwarg.arg)
-
-    return "(" + ", ".join(parts) + ")"
+        source_id,
+        qualified_name,
+        relation,
+        lineno=None,
+        end_lineno=None,
+    ):
+        target_id = self._qualified_name_to_id.get(qualified_name)
+        if source_id is not None and target_id is not None:
+            self._add_edge(
+                source_id,
+                target_id,
+                relation,
+                lineno,
+                end_lineno,
+            )

@@ -3,6 +3,12 @@ import json
 from pathlib import Path
 from typing import List, Optional, Union, Any
 from importlib import resources
+from .utils import simple_decorator
+
+
+@simple_decorator
+def decorated_function():
+    return "Hello"
 
 
 class ScannerBase:
@@ -18,10 +24,10 @@ class ScannerBase:
     OUTPUT_INFIX = ""
 
     def __init__(
-        self,
-        root: Union[str, Path],
-        ignore_file: Optional[Union[str, Path]] = None,
-        output: Optional[Union[str, Path]] = None,
+            self,
+            root: Union[str, Path],
+            ignore_file: Optional[Union[str, Path]] = None,
+            output: Optional[Union[str, Path]] = None,
     ):
         self.root = Path(root).expanduser().resolve()
 
@@ -99,8 +105,8 @@ class ScannerBase:
         return Path.cwd() / name
 
     def _resolve_prefix(
-        self,
-        output: Optional[Union[str, Path]],
+            self,
+            output: Optional[Union[str, Path]],
     ) -> Path:
         # explicit argument
         if output is not None:
@@ -121,10 +127,10 @@ class ScannerBase:
     # =====================================================
 
     def to_csv(
-        self,
-        output: Optional[Union[str, Path]] = None,
-        *,
-        include_schema_comment: bool = True,
+            self,
+            output: Optional[Union[str, Path]] = None,
+            *,
+            include_schema_comment: bool = True,
     ) -> None:
         if not self._nodes:
             raise RuntimeError("No scan results available. Call scan() first.")
@@ -181,10 +187,10 @@ class ScannerBase:
 
     @staticmethod
     def _write_csv(
-        path: Path,
-        schema: List[tuple],
-        rows: List[list],
-        include_schema_comment: bool,
+            path: Path,
+            schema: List[tuple],
+            rows: List[list],
+            include_schema_comment: bool,
     ) -> None:
         with path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
