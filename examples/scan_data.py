@@ -20,11 +20,11 @@ def main():
     scanner.scan()
 
     # Export results
-    scanner.to_csv()   # -> ./data.csv
-    scanner.to_json()  # -> ./data.json
+    scanner.to_csv()
+    scanner.to_json()
 
     print("Scan completed.")
-    print("Generated: data.csv, data.json")
+    print("Generated: data")
     return
 
 
