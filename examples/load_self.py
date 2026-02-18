@@ -68,6 +68,7 @@ def main():
         print("Example semantic lookup:")
         print("Symbols indexed:", len(ast_graph.by_qname))
         print("Files indexed:", len(ast_graph.symbols_by_file))
+    return
 
 
 if __name__ == "__main__":
