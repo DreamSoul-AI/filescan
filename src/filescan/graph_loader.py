@@ -1,7 +1,8 @@
+import os
 import csv
 from pathlib import Path
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 
 class GraphLoader:
@@ -144,3 +145,69 @@ class GraphLoader:
             return None
 
         return min(candidates)[1]
+
+    def extract_node_source(self, project_root, node_id: int) -> Optional[str]:
+        """
+        Extract the source code for a node using module_path + lineno/end_lineno.
+
+        Returns:
+            The exact text from start line to end line (inclusive), or None if not possible.
+        """
+
+        node = self.nodes.get(node_id)
+        if not node:
+            return None
+
+        module_path = node.get("module_path")
+        lineno = node.get("lineno")
+        end_lineno = node.get("end_lineno")
+
+        if not module_path or not lineno or not end_lineno:
+            return None
+
+        try:
+            start = int(lineno)
+            end = int(end_lineno)
+        except ValueError:
+            return None
+
+        if start <= 0 or end < start:
+            return None
+
+        # Ensure project_root is OS-native absolute path
+        root_path = os.path.abspath(os.fspath(project_root))
+
+        # Join using os.path
+        file_path = os.path.abspath(
+            os.path.join(root_path, module_path)
+        )
+
+        if not os.path.isfile(file_path):
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+        except OSError:
+            return None
+
+        # Python lineno is 1-based; list index is 0-based
+        start_idx = start - 1
+        end_idx = min(end, len(lines))  # slicing end is exclusive
+
+        if start_idx >= len(lines):
+            return None
+
+        return "".join(lines[start_idx:end_idx])
+
+    def extract_symbol_at(self, project_root: Union[str, os.PathLike], module_path: str, line: int) -> Optional[str]:
+
+        """
+        Convenience helper:
+        - find_symbol_at(module_path, line)
+        - extract_node_source(project_root, node_id)
+        """
+        nid = self.find_symbol_at(module_path, line)
+        if nid is None:
+            return None
+        return self.extract_node_source(project_root, nid)

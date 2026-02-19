@@ -1,7 +1,7 @@
 import astroid
+import os
 from pathlib import Path
 from typing import List, Optional, Union, Dict
-
 from .base import ScannerBase
 from .utils import load_ignore_spec
 
@@ -89,7 +89,9 @@ class AstScanner(ScannerBase):
     # =====================================================
 
     def _collect_definitions(self, path: Path):
-        module_path = str(path.relative_to(self.root)).replace("\\", "/")
+        module_path = os.path.normpath(
+            os.path.relpath(os.fspath(path), os.fspath(self.root))
+        )
         module_name = self._compute_module_name(path)
 
         try:
@@ -101,7 +103,7 @@ class AstScanner(ScannerBase):
             module = astroid.parse(
                 text,
                 module_name=module_name,
-                path=str(path),
+                path=os.fspath(path),  # also OS-native
             )
         except Exception:
             return

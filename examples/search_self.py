@@ -4,12 +4,15 @@ import filescan as fscan
 
 
 def main():
-    root = Path("../src/filescan")
+    # This MUST match the root used during AST scanning
+    project_root = Path("../src/filescan").resolve()
+
+    # Search root should match scan root
+    root = project_root
 
     # -------------------------------------------------
-    # Load AST graph (recommended for semantic search)
+    # Load AST graph
     # -------------------------------------------------
-
     nodes_csv = Path("output/filescan_ast_nodes.csv")
     edges_csv = Path("output/filescan_ast_edges.csv")
 
@@ -22,11 +25,9 @@ def main():
     # -------------------------------------------------
     # Create search engine
     # -------------------------------------------------
-
     engine = fscan.SearchEngine(root, graph)
 
-    query = "_add_edge"
-
+    query = "_add_symbol"
     print(f"\nSearching for: {query}\n")
 
     results = engine.search(query)
@@ -35,18 +36,30 @@ def main():
         print("No results found.")
         return
 
-    for group in results:
-        symbol = group["symbol"]
+    printed_symbols = set()
+
+    for r in results:
+        symbol = r["symbol"]
+        sid = r["symbol_id"]
 
         if symbol:
             print("Symbol:", symbol.get("qualified_name"))
         else:
             print("Symbol: <unknown / no semantic match>")
 
-        for match in group["matches"]:
-            print(
-                f"  {match['file']}:{match['line']}  {match['text']}"
-            )
+        print(f"  {r['file']}:{r['line']}  {r['text']}")
+
+        # Extract symbol source only once per symbol
+        if sid and sid not in printed_symbols:
+            printed_symbols.add(sid)
+
+            snippet = graph.extract_node_source(project_root, sid)
+            if snippet:
+                print("\n--- Extracted Symbol Source ---")
+                print(snippet.rstrip())
+                print("--- End ---\n")
+            else:
+                print("\n(No extractable source)\n")
 
         print()
 

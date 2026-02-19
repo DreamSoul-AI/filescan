@@ -1,3 +1,4 @@
+import os
 import csv
 import json
 from pathlib import Path
@@ -88,9 +89,12 @@ class ScannerBase:
         except ValueError:
             return False
 
-        rel_str = str(rel).replace("\\", "/")
+        rel_str = os.path.normpath(str(rel))
+
         if path.is_dir():
-            rel_str += "/"
+            rel_str = rel_str + os.sep
+
+        rel_str = rel_str.replace(os.sep, "/")
 
         return bool(self._ignore_spec.match_file(rel_str))
 

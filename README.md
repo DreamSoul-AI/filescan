@@ -1,148 +1,183 @@
 # filescan
 
-**filescan** is a lightweight Python tool for **scanning filesystem structures and Python ASTs** and exporting them as **flat, graph-style representations**.
+**filescan** is a lightweight Python tool for scanning:
 
-Instead of nested trees, `filescan` produces **stable lists of nodes with parent pointers**, making the output:
+* 📁 **Filesystem structures**
+* 🧠 **Python semantic structures (AST)**
 
-* easy to post-process
-* friendly for CSV / DataFrame / SQL pipelines
-* efficient for LLM ingestion and summarization
+and exporting them as **flat graph representations**.
 
-`filescan` can operate at two levels:
+Instead of deeply nested trees, `filescan` produces **stable node + edge lists**, making the output:
 
-* **filesystem structure** (directories & files)
-* **Python semantic structure** (modules, classes, functions, methods)
+* Easy to query
+* Friendly for CSV / SQL / Pandas workflows
+* Efficient for LLM ingestion
+* Suitable for graph analysis
 
-Both use the same flat graph design and export formats.
+Both filesystem and AST scanning use the same flat graph design.
 
+---
 
+# Why Flat Graphs?
 
-## Features
+Traditional tree structures are:
 
-### Filesystem scanning
+* Deeply nested
+* Verbose
+* Hard to filter
+* Inefficient for large-scale processing
+* Expensive for LLM token usage
+
+`filescan` uses a flat graph model:
+
+```
+nodes.csv
+edges.csv
+```
+
+Relationships are explicit via IDs, not nesting.
+
+This makes it:
+
+* Machine-friendly
+* Query-friendly
+* Token-efficient
+* AI-native
+
+---
+
+# Features
+
+## 📁 Filesystem Scanning
 
 * Recursive directory traversal
-* Flat node list with explicit `parent_id`
 * Deterministic ordering
+* Explicit parent → child edges
 * Optional `.gitignore`-style filtering
 * CSV and JSON export
+* Stable numeric IDs
 
-### Python AST scanning
+## 🧠 Python AST Scanning
 
-* Module, class, function, and method detection
-* Nested functions and classes supported
-* Stable symbol IDs with parent relationships
-* Best-effort function signature extraction
+* Module detection
+* Class detection
+* Function & method detection
+* Nested definitions supported
+* Function signature extraction (best-effort)
 * First-line docstring capture
+* Cross-file semantic relationships:
 
-### General
+  * `contains`
+  * `imports`
+  * `calls`
+  * `inherits`
+  * `references`
 
-* Shared schema + export model
-* Same API for filesystem and AST scanners
-* Usable as **both a library and a CLI**
-* Designed for automation, data pipelines, and AI workflows
+## ⚙ General
 
+* Shared graph schema design
+* Same API for filesystem and AST
+* CLI + library usage
+* Designed for automation and AI workflows
 
+---
 
-## Installation
+# Installation
 
 ```bash
 pip install filescan
 ```
 
-Or for development:
+Development mode:
 
 ```bash
 pip install -e .
 ```
 
+---
 
+# Quick Start (CLI)
 
-## Quick start (CLI)
+## Filesystem Scan (Default)
 
-### Filesystem scan (default)
-
-Scan the current directory and write a CSV:
+Scan current directory:
 
 ```bash
 filescan
 ```
 
-Scan a specific directory:
+Scan specific directory:
 
 ```bash
 filescan ./data
 ```
 
-Export as JSON:
+Export JSON:
 
 ```bash
 filescan ./data --format json
 ```
 
-Specify output base path:
+Custom output path:
 
 ```bash
 filescan ./data -o out/tree
 ```
 
-This generates:
+Output:
 
-```text
+```
 out/
-├── tree.csv
-└── tree.json
+├── tree_nodes.csv
+└── tree_edges.csv
 ```
 
+---
 
+## Python AST Scan
 
-### Python AST scan
-
-Scan Python source files and extract symbols:
+Scan Python source files:
 
 ```bash
 filescan ./src --ast
 ```
 
-Export AST symbols as JSON:
+Export JSON:
 
 ```bash
 filescan ./src --ast --format json
 ```
 
-Custom output path:
+Custom output:
 
 ```bash
 filescan ./src --ast -o out/symbols
 ```
 
-This generates:
+Output:
 
-```text
+```
 out/
-├── symbols.csv
-└── symbols.json
+├── symbols_nodes.csv
+└── symbols_edges.csv
 ```
 
+---
 
-
-## Ignore rules (`.fscanignore`)
+# Ignore Rules (`.fscanignore`)
 
 `filescan` supports **gitignore-style patterns** via `pathspec`.
 
-### Default behavior
+### Resolution order:
 
-* If `--ignore-file` is provided → use it
-* Otherwise, look for:
-
-```text
-./.fscanignore   (current working directory)
-```
+1. `--ignore-file` if provided
+2. `./.fscanignore` in working directory
+3. Built-in default ignore rules
 
 Ignore rules apply to:
 
-* filesystem scanning
-* AST scanning (Python files are skipped if ignored)
+* Filesystem scanning
+* AST scanning (ignored Python files are skipped)
 
 ### Example `.fscanignore`
 
@@ -155,76 +190,86 @@ __pycache__/
 *.pyc
 ```
 
+---
 
+# Output Format
 
-## Output formats
+Both scanners produce:
 
-Both filesystem and AST scans produce **flat graphs** with schema metadata.
+* `*_nodes.csv`
+* `*_edges.csv`
+* Optional JSON
 
+Each file includes schema metadata as commented headers.
 
+---
 
-### Filesystem schema
+# Filesystem Graph Schema
 
-| Field       | Description                                 |
-| -- | - |
-| `id`        | Unique integer ID                           |
-| `parent_id` | Parent node ID (`null` for root)            |
-| `type`      | `'d'` = directory, `'f'` = file             |
-| `name`      | Base name                                   |
-| `size`      | File size in bytes (`null` for directories) |
+## Nodes
 
-#### CSV example
+| Field  | Description                                 |
+| ------ | ------------------------------------------- |
+| `id`   | Unique integer ID                           |
+| `type` | `'d'` = directory, `'f'` = file             |
+| `name` | Base filename                               |
+| `size` | File size in bytes (`null` for directories) |
 
-```csv
-# id: Unique integer ID for this node
-# parent_id: ID of parent node, or null for root
-# type: Node type: 'd' = directory, 'f' = file
-# name: Base name of the file or directory
-# size: File size in bytes; null for directories
-id,parent_id,type,name,size
-0,,d,data,
-1,0,f,example.txt,128
-```
+## Edges
 
+| Field      | Description       |
+| ---------- | ----------------- |
+| `id`       | Unique edge ID    |
+| `source`   | Parent node ID    |
+| `target`   | Child node ID     |
+| `relation` | Always `contains` |
 
+---
 
-### Python AST schema
+# Python AST Graph Schema
 
-| Field         | Description                                |
-| - |  |
-| `id`          | Unique integer ID for this symbol          |
-| `parent_id`   | Parent symbol ID (`null` for module)       |
-| `kind`        | `module` | `class` | `function` | `method` |
-| `name`        | Symbol name                                |
-| `module_path` | File path relative to scan root            |
-| `lineno`      | Starting line number (1-based)             |
-| `signature`   | Function or method signature (best-effort) |
-| `doc`         | First line of docstring, if any            |
+## Nodes
 
-Nested functions and classes are represented naturally via `parent_id`.
+| Field            | Description                             |
+| ---------------- | --------------------------------------- |
+| `id`             | Unique symbol ID                        |
+| `kind`           | `module`, `class`, `function`, `method` |
+| `name`           | Symbol name                             |
+| `qualified_name` | Fully qualified symbol path             |
+| `module_path`    | File path relative to scan root         |
+| `lineno`         | Starting line (1-based)                 |
+| `end_lineno`     | Ending line                             |
+| `signature`      | Function signature                      |
+| `doc`            | First line of docstring                 |
 
+## Edges
 
+| Relation     | Meaning                      |
+| ------------ | ---------------------------- |
+| `contains`   | Parent symbol contains child |
+| `imports`    | Module imports symbol        |
+| `calls`      | Function calls symbol        |
+| `inherits`   | Class inherits from base     |
+| `references` | Symbol references another    |
 
-## Library usage
+---
 
-### Filesystem scanner
+# Library Usage
+
+## Filesystem Scanner
 
 ```python
 from filescan import Scanner
 
-scanner = Scanner(
-    root="data",
-    ignore_file=".fscanignore",
-)
-
+scanner = Scanner(root="data")
 scanner.scan()
-scanner.to_csv()    # -> ./data.csv
-scanner.to_json()   # -> ./data.json
+scanner.to_csv()
+scanner.to_json()
 ```
 
+---
 
-
-### Python AST scanner
+## Python AST Scanner
 
 ```python
 from filescan import AstScanner
@@ -240,63 +285,59 @@ scanner.to_csv()
 scanner.to_json()
 ```
 
+---
 
-
-### Programmatic access
+## Programmatic Access
 
 ```python
 nodes = scanner.scan()
-print(len(nodes))
 
-data = scanner.to_dict()
+print(len(nodes))
+print(nodes[0])
 ```
 
+---
 
+# Designed for AI & Data Pipelines
 
-## Why `filescan`?
+`filescan` is especially useful for:
 
-Most filesystem and code structures are represented as deeply nested trees. While human-readable, they are verbose, hard to query, and inefficient for large-scale processing.
-
-`filescan` represents both **filesystems and codebases** as **flat graphs** because this format is:
-
-* **Compact and token-efficient**
-  Flat lists with numeric IDs consume far fewer tokens than recursive trees, making them ideal for LLM context windows.
-
-* **Explicit and unambiguous**
-  All relationships are encoded directly via `parent_id`.
-
-* **Easy to process**
-  Flat data works naturally with filtering, joins, grouping, and graph analysis.
-
-This makes `filescan` especially suitable for:
-
+* LLM-based code understanding
+* Token-efficient project summarization
+* Static analysis
+* Code graph generation
 * SQL / Pandas / DuckDB pipelines
-* Static analysis and refactoring tools
-* Graph-based code understanding
-* **LLM-based reasoning and summarization of projects**
+* Refactoring tools
+* Cross-file semantic reasoning
 
-In short, `filescan` favors **machine-friendly structure over visual trees**, enabling scalable, AI-native workflows.
+Flat graphs are far more efficient than nested JSON trees when:
 
+* Feeding into LLMs
+* Performing joins
+* Running graph algorithms
+* Building embeddings
 
+---
 
-## Development
+# Development
 
-The project uses a `src/` layout.
+Project uses `src/` layout.
 
-Examples can be run without installation:
+Run examples:
 
 ```bash
 python examples/scan_data.py
 ```
 
-Or as a module:
+Or:
 
 ```bash
 python -m examples.scan_data
 ```
 
+---
 
-
-## License
+# License
 
 MIT License
+

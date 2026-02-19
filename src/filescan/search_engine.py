@@ -1,5 +1,4 @@
-# filescan/search_engine.py
-
+import os
 import subprocess
 import json
 from pathlib import Path
@@ -16,7 +15,7 @@ class SearchEngine:
     """
 
     def __init__(self, root: Path, graph: GraphLoader):
-        self.root = root.resolve()
+        self.root = os.path.abspath(os.fspath(root))
         self.graph = graph
 
     # -------------------------------------------------
@@ -29,16 +28,14 @@ class SearchEngine:
         if not matches:
             return []
 
-        enriched = []
+        results = []
 
         for m in matches:
-            file_path = Path(m["file"]).resolve()
+            file_path = os.path.abspath(m["file"])
 
-            try:
-                rel_path = file_path.relative_to(self.root)
-                module_path = str(rel_path).replace("\\", "/")
-            except ValueError:
-                module_path = None
+            module_path = os.path.normpath(
+                os.path.relpath(file_path, self.root)
+            )
 
             symbol_id = None
             if module_path and self.graph.is_semantic_graph():
@@ -47,15 +44,15 @@ class SearchEngine:
                     m["line"],
                 )
 
-            enriched.append({
+            results.append({
                 "file": str(file_path),
                 "line": m["line"],
                 "text": m["text"].strip(),
                 "symbol_id": symbol_id,
                 "symbol": self.graph.nodes.get(symbol_id),
             })
-
-        return self._group_by_symbol(enriched)
+        # TODO: enrich context with associate with definition like node, or just reference.
+        return results
 
     # -------------------------------------------------
     # Ripgrep Layer
@@ -68,7 +65,7 @@ class SearchEngine:
             "--line-number",
             "--with-filename",
             query,
-            str(self.root),
+            self.root,
         ]
 
         proc = subprocess.Popen(
@@ -88,22 +85,3 @@ class SearchEngine:
                     "text": event["data"]["lines"]["text"],
                 }
 
-    # -------------------------------------------------
-    # Group Results
-    # -------------------------------------------------
-
-    def _group_by_symbol(self, results: List[Dict]) -> List[Dict]:
-        grouped = {}
-
-        for r in results:
-            sid = r["symbol_id"]
-
-            if sid not in grouped:
-                grouped[sid] = {
-                    "symbol": r["symbol"],
-                    "matches": [],
-                }
-
-            grouped[sid]["matches"].append(r)
-
-        return list(grouped.values())
