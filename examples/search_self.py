@@ -4,10 +4,10 @@ import filescan as fscan
 
 
 def main():
-    # This MUST match the root used during AST scanning
+    # -------------------------------------------------
+    # Project root (must match AST scan root)
+    # -------------------------------------------------
     project_root = Path("../src/filescan").resolve()
-
-    # Search root should match scan root
     root = project_root
 
     # -------------------------------------------------
@@ -38,30 +38,44 @@ def main():
 
     printed_symbols = set()
 
+    # -------------------------------------------------
+    # Pretty Output
+    # -------------------------------------------------
     for r in results:
-        symbol = r["symbol"]
-        sid = r["symbol_id"]
+        file_path = r["file"]
+        line = r["line"]
+        text = r["text"]
+        match_type = r.get("match_type", "unknown")
+        symbol = r.get("symbol")
+        sid = r.get("symbol_id")
 
+        # ---- Header ----
+        print("=" * 80)
+        print(f"[{match_type.upper()}]  {file_path}:{line}")
+
+        # ---- Symbol Info ----
         if symbol:
-            print("Symbol:", symbol.get("qualified_name"))
+            print(f"Symbol: {symbol.get('qualified_name')}")
         else:
-            print("Symbol: <unknown / no semantic match>")
+            print("Symbol: <no semantic symbol>")
 
-        print(f"  {r['file']}:{r['line']}  {r['text']}")
+        # ---- Matched Line ----
+        print(f"Code  : {text}")
 
-        # Extract symbol source only once per symbol
+        # ---- Extract Definition (once per symbol) ----
         if sid and sid not in printed_symbols:
             printed_symbols.add(sid)
 
             snippet = graph.extract_node_source(project_root, sid)
             if snippet:
-                print("\n--- Extracted Symbol Source ---")
+                print("\n--- Definition Source ---")
                 print(snippet.rstrip())
-                print("--- End ---\n")
-            else:
-                print("\n(No extractable source)\n")
+                print("--- End Definition ---")
 
         print()
+
+    print("=" * 80)
+    print(f"Total results: {len(results)}")
 
 
 if __name__ == "__main__":
