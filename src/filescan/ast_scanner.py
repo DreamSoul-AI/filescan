@@ -59,10 +59,11 @@ class AstScanner(ScannerBase):
             self._ignore_spec = load_ignore_spec(self.ignore_file)
 
         # PASS 1 — Collect definitions + imports
-        for path in sorted(self.root.rglob("*.py")):
-            if self._is_ignored(path):
-                continue
-            self._collect_definitions(path)
+        for root in self.root:
+            for path in sorted(root.rglob("*.py")):
+                if self._is_ignored(path):
+                    continue
+                self._collect_definitions(path, root)
 
         # PASS 2 — Resolve semantic relationships
         for module_name, module in self._ast_modules.items():
@@ -70,29 +71,62 @@ class AstScanner(ScannerBase):
 
         return self._nodes
 
+    # def scan(self) -> List[list]:
+    #     self.reset()
+    #     self._qualified_name_to_id.clear()
+    #     self._ast_modules.clear()
+    #     self._module_imports.clear()
+    #
+    #     if self._ignore_spec is None and self.ignore_file:
+    #         self._ignore_spec = load_ignore_spec(self.ignore_file)
+    #
+    #     # PASS 1 — Collect definitions + imports
+    #     for path in sorted(self.root.rglob("*.py")):
+    #         if self._is_ignored(path):
+    #             continue
+    #         self._collect_definitions(path)
+    #
+    #     # PASS 2 — Resolve semantic relationships
+    #     for module_name, module in self._ast_modules.items():
+    #         self._resolve_references(module_name, module)
+    #
+    #     return self._nodes
+
     # =====================================================
     # Module name resolution
     # =====================================================
 
-    def _compute_module_name(self, path: Path) -> str:
-        rel = path.relative_to(self.root)
+    def _compute_module_name(self, path: Path, root: Path) -> str:
+        rel = path.relative_to(root)
         rel_no_suffix = rel.with_suffix("")
         parts = list(rel_no_suffix.parts)
 
         if parts and parts[-1] == "__init__":
             parts = parts[:-1]
 
-        return ".".join(parts)
+        # Namespace with root folder name
+        return ".".join([root.name] + parts)
+
+    # def _compute_module_name(self, path: Path) -> str:
+    #     rel = path.relative_to(self.root)
+    #     rel_no_suffix = rel.with_suffix("")
+    #     parts = list(rel_no_suffix.parts)
+    #
+    #     if parts and parts[-1] == "__init__":
+    #         parts = parts[:-1]
+    #
+    #     return ".".join(parts)
 
     # =====================================================
     # PASS 1 — Definitions + Import Map
     # =====================================================
 
-    def _collect_definitions(self, path: Path):
+    # def _collect_definitions(self, path: Path):
+    def _collect_definitions(self, path: Path, root: Path):
         module_path = os.path.normpath(
-            os.path.relpath(os.fspath(path), os.fspath(self.root))
+            os.path.relpath(os.fspath(path), os.fspath(root))
         )
-        module_name = self._compute_module_name(path)
+        module_name = self._compute_module_name(path, root)
 
         try:
             text = path.read_text(encoding="utf-8")

@@ -26,11 +26,20 @@ class ScannerBase:
 
     def __init__(
             self,
-            root: Union[str, Path],
+            # root: Union[str, Path],
+            root: Union[str, Path, List[Union[str, Path]]],
             ignore_file: Optional[Union[str, Path]] = None,
             output: Optional[Union[str, Path]] = None,
     ):
-        self.root = Path(root).expanduser().resolve()
+        # self.root = Path(root).expanduser().resolve()
+        if isinstance(root, (str, Path)):
+            roots = [root]
+        else:
+            roots = root
+
+        self.root: List[Path] = [
+            Path(r).expanduser().resolve() for r in roots
+        ]
 
         self.ignore_file = (
             Path(ignore_file).expanduser().resolve()
@@ -84,9 +93,13 @@ class ScannerBase:
         if self._ignore_spec is None:
             return False
 
-        try:
-            rel = path.relative_to(self.root)
-        except ValueError:
+        for root in self.root:
+            try:
+                rel = path.relative_to(root)
+                break
+            except ValueError:
+                continue
+        else:
             return False
 
         rel_str = os.path.normpath(str(rel))
@@ -97,6 +110,24 @@ class ScannerBase:
         rel_str = rel_str.replace(os.sep, "/")
 
         return bool(self._ignore_spec.match_file(rel_str))
+
+    # def _is_ignored(self, path: Path) -> bool:
+    #     if self._ignore_spec is None:
+    #         return False
+    #
+    #     try:
+    #         rel = path.relative_to(self.root)
+    #     except ValueError:
+    #         return False
+    #
+    #     rel_str = os.path.normpath(str(rel))
+    #
+    #     if path.is_dir():
+    #         rel_str = rel_str + os.sep
+    #
+    #     rel_str = rel_str.replace(os.sep, "/")
+    #
+    #     return bool(self._ignore_spec.match_file(rel_str))
 
     # =====================================================
     # Output resolution
@@ -169,7 +200,7 @@ class ScannerBase:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         data = {
-            "root": str(self.root),
+            "root": [str(r) for r in self.root],
             "node_schema": [
                 {"name": name, "description": desc}
                 for name, desc in self.NODE_SCHEMA
@@ -184,6 +215,31 @@ class ScannerBase:
 
         with path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
+    # def to_json(self, output: Optional[Union[str, Path]] = None) -> None:
+    #     if not self._nodes:
+    #         raise RuntimeError("No scan results available. Call scan() first.")
+    #
+    #     prefix = self._resolve_prefix(output)
+    #     path = prefix.with_name(prefix.name + ".json")
+    #     path.parent.mkdir(parents=True, exist_ok=True)
+    #
+    #     data = {
+    #         "root": str(self.root),
+    #         "node_schema": [
+    #             {"name": name, "description": desc}
+    #             for name, desc in self.NODE_SCHEMA
+    #         ],
+    #         "edge_schema": [
+    #             {"name": name, "description": desc}
+    #             for name, desc in self.EDGE_SCHEMA
+    #         ],
+    #         "nodes": self._nodes,
+    #         "edges": self._edges,
+    #     }
+    #
+    #     with path.open("w", encoding="utf-8") as f:
+    #         json.dump(data, f, indent=2, ensure_ascii=False)
 
     # =====================================================
     # CSV writer

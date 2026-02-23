@@ -17,21 +17,32 @@ class Scanner(ScannerBase):
     # Public
     # -------------------------------------------------
 
-    def scan(self) -> List[list]:
-        """
-        Scan the filesystem tree rooted at `self.root`.
+    # def scan(self) -> List[list]:
+    #     """
+    #     Scan the filesystem tree rooted at `self.root`.
+    #
+    #     Returns
+    #     -------
+    #     list of list
+    #         Flat list of nodes following NODE_SCHEMA order.
+    #     """
+    #     self.reset()
+    #
+    #     if self._ignore_spec is None and self.ignore_file is not None:
+    #         self._ignore_spec = load_ignore_spec(self.ignore_file)
+    #
+    #     self._walk(self.root, parent_id=None)
+    #     return self._nodes
 
-        Returns
-        -------
-        list of list
-            Flat list of nodes following NODE_SCHEMA order.
-        """
+    def scan(self) -> List[list]:
         self.reset()
 
         if self._ignore_spec is None and self.ignore_file is not None:
             self._ignore_spec = load_ignore_spec(self.ignore_file)
 
-        self._walk(self.root, parent_id=None)
+        for root in self.root:
+            self._walk(root, parent_id=None)
+
         return self._nodes
 
     # -------------------------------------------------

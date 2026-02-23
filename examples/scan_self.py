@@ -13,7 +13,7 @@ def main():
         ignore_file = None
 
     # Create scanner
-    scanner = fscan.Scanner(root, ignore_file=ignore_file, output='output/filescan')
+    scanner = fscan.Scanner([root], ignore_file=ignore_file, output='output/filescan')
 
     # Run scan
     scanner.scan()
@@ -26,7 +26,7 @@ def main():
     print("Generated: filescan")
 
     # Create AST scanner
-    ast_scanner = fscan.AstScanner(root,ignore_file=ignore_file,output="output/filescan_ast")
+    ast_scanner = fscan.AstScanner([root], ignore_file=ignore_file,output="output/filescan_ast")
     # Run scan
     ast_scanner.scan()
 
