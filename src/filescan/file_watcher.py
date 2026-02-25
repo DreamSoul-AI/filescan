@@ -1,7 +1,7 @@
 import threading
 import time
 from pathlib import Path
-from typing import Optional, Set, Tuple
+from typing import Optional, Set, Tuple, Union
 
 from watchfiles import watch, Change
 
@@ -9,22 +9,52 @@ from .scanner import Scanner
 from .ast_scanner import AstScanner
 
 
-class FileWatcher(object):
+PathLike = Union[str, Path]
+
+
+class FileWatcher:
+    """
+    Watches a root directory and triggers:
+      - filesystem scan on add/delete events
+      - AST scan on any .py change event
+
+    Output behavior:
+
+    If `output` is provided:
+        filesystem -> <output>
+        AST        -> <output>_ast
+
+    If `output` is None:
+        filesystem -> ./output
+        AST        -> ./output_ast
+    """
 
     def __init__(
         self,
-        root,
-        ignore_file=None,
-        output=None,
-        debounce_seconds=0.5,
-    ):
-        # type: (Path, Optional[Path], Optional[Path], float) -> None
+        root: PathLike,
+        ignore_file: Optional[PathLike] = None,
+        output: Optional[PathLike] = None,
+        debounce_seconds: float = 0.5,
+    ) -> None:
 
         self.root = Path(root).resolve()
-        self.ignore_file = ignore_file
-        self.output = output
-        self.debounce_seconds = debounce_seconds
 
+        self.ignore_file = (
+            Path(ignore_file).resolve() if ignore_file else None
+        )
+
+        # ------------------------------
+        # Output handling (clean logic)
+        # ------------------------------
+        if output is not None:
+            base = Path(output).resolve()
+        else:
+            base = Path("output").resolve()
+
+        self.output_fs = base
+        self.output_ast = base.with_name(base.name + "_ast")
+
+        self.debounce_seconds = float(debounce_seconds)
         self._stop_event = threading.Event()
         self._last_trigger_time = 0.0
 
@@ -32,12 +62,12 @@ class FileWatcher(object):
     # Public API
     # ---------------------------------------------------------
 
-    def start(self):
-        # type: () -> None
-
+    def start(self) -> None:
         print("========================================")
         print("[watcher] Started")
-        print("[watcher] Root:", self.root)
+        print("[watcher] Root      :", self.root)
+        print("[watcher] Output FS :", self.output_fs)
+        print("[watcher] Output AST:", self.output_ast)
         print("========================================\n")
 
         for changes in watch(self.root, recursive=True):
@@ -57,27 +87,25 @@ class FileWatcher(object):
             self._last_trigger_time = now
             self._handle_changes(changes, fs_trigger, ast_trigger)
 
-    def stop(self):
-        # type: () -> None
-        print("[watcher] Stopped.")
+    def stop(self) -> None:
         self._stop_event.set()
 
     # ---------------------------------------------------------
     # Trigger logic
     # ---------------------------------------------------------
 
-    def _should_trigger_filesystem_scan(self, changes):
-        # type: (Set[Tuple[Change, str]]) -> bool
-
-        for change, path_str in changes:
+    def _should_trigger_filesystem_scan(
+        self, changes: Set[Tuple[Change, str]]
+    ) -> bool:
+        for change, _ in changes:
             if change in (Change.added, Change.deleted):
                 return True
         return False
 
-    def _should_trigger_ast_scan(self, changes):
-        # type: (Set[Tuple[Change, str]]) -> bool
-
-        for change, path_str in changes:
+    def _should_trigger_ast_scan(
+        self, changes: Set[Tuple[Change, str]]
+    ) -> bool:
+        for _, path_str in changes:
             if Path(path_str).suffix == ".py":
                 return True
         return False
@@ -86,8 +114,12 @@ class FileWatcher(object):
     # Handling
     # ---------------------------------------------------------
 
-    def _handle_changes(self, changes, fs_trigger, ast_trigger):
-        # type: (Set[Tuple[Change, str]], bool, bool) -> None
+    def _handle_changes(
+        self,
+        changes: Set[Tuple[Change, str]],
+        fs_trigger: bool,
+        ast_trigger: bool,
+    ) -> None:
 
         print("\n----------------------------------------")
         print("[watcher] Change detected at", time.strftime("%H:%M:%S"))
@@ -112,30 +144,28 @@ class FileWatcher(object):
     # Scan execution
     # ---------------------------------------------------------
 
-    def _run_filesystem_scan(self):
-        # type: () -> None
-
+    def _run_filesystem_scan(self) -> None:
         start = time.time()
+
         scanner = Scanner(
             root=self.root,
             ignore_file=self.ignore_file,
-            output=self.output,
+            output=self.output_fs,
         )
         scanner.scan()
-        scanner.to_csv(self.output)
-        duration = time.time() - start
-        print("[filesystem] Completed in %.3f seconds" % duration)
+        scanner.to_csv()
 
-    def _run_ast_scan(self):
-        # type: () -> None
+        print("[filesystem] Completed in %.3f seconds" % (time.time() - start))
 
+    def _run_ast_scan(self) -> None:
         start = time.time()
+
         ast_scanner = AstScanner(
             root=self.root,
             ignore_file=self.ignore_file,
-            output=self.output,
+            output=self.output_ast,
         )
         ast_scanner.scan()
-        ast_scanner.to_csv(self.output)
-        duration = time.time() - start
-        print("[ast] Completed in %.3f seconds" % duration)
+        ast_scanner.to_csv()
+
+        print("[ast] Completed in %.3f seconds" % (time.time() - start))

@@ -37,18 +37,18 @@ def main():
     fs = fscan.Scanner(
         root=project_root,
         ignore_file=project_root / "default.fscanignore",
-        output=output_dir,
+        output='output/filescan',
     )
     fs.scan()
-    fs.to_csv(output_dir)
+    fs.to_csv()
 
     ast = fscan.AstScanner(
         root=project_root,
         ignore_file=project_root / "default.fscanignore",
-        output=output_dir,
+        output='output/filescan_ast',
     )
     ast.scan()
-    ast.to_csv(output_dir)
+    ast.to_csv()
 
     print("\nInitial scan complete.")
     print("Modify any .py file to trigger re-scan.")

@@ -13,25 +13,25 @@ class GraphLoader:
     - Scanner (filesystem graph)
     - AstScanner (semantic graph)
 
-    Automatically adapts to schema.
+    Supports string-based node IDs.
     """
 
     def __init__(self):
         # Raw data
-        self.nodes: Dict[int, Dict[str, str]] = {}
+        self.nodes: Dict[str, Dict[str, str]] = {}
         self.edges: List[Dict[str, str]] = []
 
         self.node_schema: List[str] = []
         self.edge_schema: List[str] = []
 
         # Adjacency
-        self.out_edges: Dict[int, List[Dict]] = defaultdict(list)
-        self.in_edges: Dict[int, List[Dict]] = defaultdict(list)
+        self.out_edges: Dict[str, List[Dict]] = defaultdict(list)
+        self.in_edges: Dict[str, List[Dict]] = defaultdict(list)
 
-        # Optional semantic indexes
-        self.by_qname: Dict[str, int] = {}
-        self.by_name: Dict[str, List[int]] = defaultdict(list)
-        self.symbols_by_file: Dict[str, List[Tuple[int, int, int]]] = defaultdict(list)
+        # Optional semantic indexes (AST only)
+        self.by_qname: Dict[str, str] = {}
+        self.by_name: Dict[str, List[str]] = defaultdict(list)
+        self.symbols_by_file: Dict[str, List[Tuple[int, int, str]]] = defaultdict(list)
 
     # -------------------------------------------------
     # Public API
@@ -65,7 +65,7 @@ class GraphLoader:
                     continue
 
                 node_data = dict(zip(self.node_schema, row))
-                node_id = int(node_data["id"])
+                node_id = node_data["id"]  # 🔥 string ID
                 self.nodes[node_id] = node_data
 
     def _load_edges(self, path: Path):
@@ -83,9 +83,11 @@ class GraphLoader:
                     continue
 
                 edge_data = dict(zip(self.edge_schema, row))
-                edge_data["id"] = int(edge_data["id"])
-                edge_data["source"] = int(edge_data["source"])
-                edge_data["target"] = int(edge_data["target"])
+
+                # Keep IDs as strings
+                edge_data["id"] = edge_data["id"]
+                edge_data["source"] = edge_data["source"]
+                edge_data["target"] = edge_data["target"]
 
                 self.edges.append(edge_data)
 
@@ -102,7 +104,7 @@ class GraphLoader:
             lineno = node.get("lineno")
             end_lineno = node.get("end_lineno")
 
-            # Build semantic indexes only if fields exist
+            # Semantic indexes (AST only)
             if qname:
                 self.by_qname[qname] = node_id
 
@@ -130,10 +132,10 @@ class GraphLoader:
     # Semantic Helper
     # -------------------------------------------------
 
-    def find_symbol_at(self, module_path: str, line: int) -> Optional[int]:
+    def find_symbol_at(self, module_path: str, line: int) -> Optional[str]:
         """
         Only meaningful for AST graphs.
-        Returns smallest enclosing symbol.
+        Returns smallest enclosing symbol ID.
         """
         candidates = []
 
@@ -146,12 +148,9 @@ class GraphLoader:
 
         return min(candidates)[1]
 
-    def extract_node_source(self, project_root, node_id: int) -> Optional[str]:
+    def extract_node_source(self, project_root, node_id: str) -> Optional[str]:
         """
         Extract the source code for a node using module_path + lineno/end_lineno.
-
-        Returns:
-            The exact text from start line to end line (inclusive), or None if not possible.
         """
 
         node = self.nodes.get(node_id)
@@ -174,10 +173,7 @@ class GraphLoader:
         if start <= 0 or end < start:
             return None
 
-        # Ensure project_root is OS-native absolute path
         root_path = os.path.abspath(os.fspath(project_root))
-
-        # Join using os.path
         file_path = os.path.abspath(
             os.path.join(root_path, module_path)
         )
@@ -191,23 +187,29 @@ class GraphLoader:
         except OSError:
             return None
 
-        # Python lineno is 1-based; list index is 0-based
         start_idx = start - 1
-        end_idx = min(end, len(lines))  # slicing end is exclusive
+        end_idx = min(end, len(lines))
 
         if start_idx >= len(lines):
             return None
 
         return "".join(lines[start_idx:end_idx])
 
-    def extract_symbol_at(self, project_root: Union[str, os.PathLike], module_path: str, line: int) -> Optional[str]:
+    def extract_symbol_at(
+        self,
+        project_root: Union[str, os.PathLike],
+        module_path: str,
+        line: int,
+    ) -> Optional[str]:
 
         """
         Convenience helper:
         - find_symbol_at(module_path, line)
         - extract_node_source(project_root, node_id)
         """
+
         nid = self.find_symbol_at(module_path, line)
         if nid is None:
             return None
+
         return self.extract_node_source(project_root, nid)

@@ -1,0 +1,78 @@
+# id: Unique node ID
+# kind: module | class | function | method
+# name: Symbol name
+# qualified_name: Fully qualified symbol name
+# module_path: Module file path relative to scan root
+# lineno: Starting line number
+# end_lineno: Ending line number
+# signature: Function signature
+# doc: First line of docstring
+id,kind,name,qualified_name,module_path,lineno,end_lineno,signature,doc
+84a67b1d8b14a8f2,module,filescan,filescan,__init__.py,1,1,,
+88f254547fd7553e,module,filescan.ast_scanner,filescan.ast_scanner,ast_scanner.py,1,1,,
+518fa6de2b5ca646,class,AstScanner,filescan.ast_scanner.AstScanner,ast_scanner.py,11,410,,Astroid-powered semantic scanner.
+9bf45c862c9b259b,method,__init__,filescan.ast_scanner.AstScanner.__init__,ast_scanner.py,41,56,"self, root: Union[str, Path], ignore_file: Optional[Union[str, Path]] = None, output: Optional[Union[str, Path]] = None",
+ad6a90a3221787ab,method,scan,filescan.ast_scanner.AstScanner.scan,ast_scanner.py,62,82,self,
+bca0b8b2a97fe07e,method,_sha16,filescan.ast_scanner.AstScanner._sha16,ast_scanner.py,88,90,s: str,
+2ad81157983979ea,method,_node_id,filescan.ast_scanner.AstScanner._node_id,ast_scanner.py,92,93,"self, qualified_name: str",
+e8c475ae19653413,method,_edge_id,filescan.ast_scanner.AstScanner._edge_id,ast_scanner.py,95,97,"self, source: str, target: str, relation: str, lineno: Optional[int]",
+61f1db4ed1c378ce,method,_compute_module_name,filescan.ast_scanner.AstScanner._compute_module_name,ast_scanner.py,103,112,"self, path: Path, root: Path",
+817376b54e3246a2,method,_collect_definitions,filescan.ast_scanner.AstScanner._collect_definitions,ast_scanner.py,118,169,"self, path: Path, root: Path",
+f05d2c687f695ab8,method,_visit_definition,filescan.ast_scanner.AstScanner._visit_definition,ast_scanner.py,171,201,"self, node, parent_id: str, module_path: str",
+9ad6f1d7e67c48f6,method,_add_symbol,filescan.ast_scanner.AstScanner._add_symbol,ast_scanner.py,207,242,"self, parent_id: Optional[str], kind: str, name: str, qualified_name: str, module_path: str, lineno: int, end_lineno: int, signature: str, doc: Optional[str]",
+5e703d95448cc12e,method,_add_edge,filescan.ast_scanner.AstScanner._add_edge,ast_scanner.py,248,267,"self, source: str, target: str, relation: str, lineno: Optional[int] = None, end_lineno: Optional[int] = None",
+379cf9031718bc83,method,_resolve_caller_id,filescan.ast_scanner.AstScanner._resolve_caller_id,ast_scanner.py,273,285,"self, node",
+98fbd7bd5466cbf6,method,_resolve_references,filescan.ast_scanner.AstScanner._resolve_references,ast_scanner.py,287,388,"self, module_name: str, module: astroid.Module",
+ef20464cd03db127,method,_maybe_link,filescan.ast_scanner.AstScanner._maybe_link,ast_scanner.py,394,410,"self, source_id: Optional[str], qualified_name: str, relation: str, lineno: Optional[int] = None, end_lineno: Optional[int] = None",
+d24943141733c9ce,module,filescan.base,filescan.base,base.py,1,1,,
+5f7c2451073d7133,function,decorated_function,filescan.base.decorated_function,base.py,10,12,,
+412390986212a0c4,class,ScannerBase,filescan.base.ScannerBase,base.py,15,255,,Base class for graph scanners.
+ca7c8b0ed79a1f1d,method,__init__,filescan.base.ScannerBase.__init__,base.py,41,72,"self, root: Union[str, Path, List[Union[str, Path]]], ignore_file: Optional[Union[str, Path]] = None, output: Optional[Union[str, Path]] = None",
+b9cb0c32a562bcea,method,reset,filescan.base.ScannerBase.reset,base.py,78,81,self,Clear in-memory graph.
+58e5fdf99e5b2809,method,_add_node,filescan.base.ScannerBase._add_node,base.py,85,94,"self, row: list",Add a node row.
+a0cd154f71244cad,method,_add_edge,filescan.base.ScannerBase._add_edge,base.py,98,105,"self, edge_id: str, source: str, target: str, relation: str",Add an edge row to the graph.
+be1cde83a03a42d1,method,_is_ignored,filescan.base.ScannerBase._is_ignored,base.py,111,131,"self, path: Path",
+bb007d5b33fd84d7,method,_default_output_prefix,filescan.base.ScannerBase._default_output_prefix,base.py,137,150,self,Generate default output prefix.
+e448a7eb64ccd072,method,_resolve_prefix,filescan.base.ScannerBase._resolve_prefix,base.py,154,171,"self, output: Optional[Union[str, Path]]",
+002b01e06cc889dd,method,to_csv,filescan.base.ScannerBase.to_csv,base.py,177,206,"self, output: Optional[Union[str, Path]] = None, *, include_schema_comment: bool = True",
+1f4b194e9188b5ed,method,to_json,filescan.base.ScannerBase.to_json,base.py,210,233,"self, output: Optional[Union[str, Path]] = None",
+c9c83ad439a7b95b,method,_write_csv,filescan.base.ScannerBase._write_csv,base.py,239,255,"path: Path, schema: List[tuple], rows: List[list], include_schema_comment: bool",
+df2f2fafbdb6bfdf,module,filescan.commands,filescan.commands,commands\__init__.py,1,1,,
+b289a1cca3d5ca1f,module,filescan.commands.cli,filescan.commands.cli,commands\cli.py,1,1,,
+14329b9007151c9b,function,main,filescan.commands.cli.main,commands\cli.py,11,91,,
+51a4aa3f99350a2d,module,filescan.file_watcher,filescan.file_watcher,file_watcher.py,1,1,,
+84583bbe91f4b1a3,class,FileWatcher,filescan.file_watcher.FileWatcher,file_watcher.py,15,171,,Watches a root directory and triggers:
+a0a8553dd4b74141,method,__init__,filescan.file_watcher.FileWatcher.__init__,file_watcher.py,32,59,"self, root: PathLike, ignore_file: Optional[PathLike] = None, output: Optional[PathLike] = None, debounce_seconds: float = 0.5",
+38f920077358d050,method,start,filescan.file_watcher.FileWatcher.start,file_watcher.py,65,88,self,
+80515a77d5a543df,method,stop,filescan.file_watcher.FileWatcher.stop,file_watcher.py,90,91,self,
+6ee33ff451a9a623,method,_should_trigger_filesystem_scan,filescan.file_watcher.FileWatcher._should_trigger_filesystem_scan,file_watcher.py,97,103,"self, changes: Set[Tuple[Change, str]]",
+44300fb3319f8d7b,method,_should_trigger_ast_scan,filescan.file_watcher.FileWatcher._should_trigger_ast_scan,file_watcher.py,105,111,"self, changes: Set[Tuple[Change, str]]",
+912fe5ee0108a1a7,method,_handle_changes,filescan.file_watcher.FileWatcher._handle_changes,file_watcher.py,117,141,"self, changes: Set[Tuple[Change, str]], fs_trigger: bool, ast_trigger: bool",
+e2238828b64db8c2,method,_run_filesystem_scan,filescan.file_watcher.FileWatcher._run_filesystem_scan,file_watcher.py,147,158,self,
+5667acab2e06bd21,method,_run_ast_scan,filescan.file_watcher.FileWatcher._run_ast_scan,file_watcher.py,160,171,self,
+29e3ebd408e30885,module,filescan.graph_loader,filescan.graph_loader,graph_loader.py,1,1,,
+deb6b1209bfae9ff,class,GraphLoader,filescan.graph_loader.GraphLoader,graph_loader.py,8,215,,Generic in-memory graph loader.
+39dd0bde1cc3faab,method,__init__,filescan.graph_loader.GraphLoader.__init__,graph_loader.py,19,34,self,
+68b32c842e7c171d,method,load,filescan.graph_loader.GraphLoader.load,graph_loader.py,40,43,"self, nodes_csv: Path, edges_csv: Path",
+f38945edf095f86f,method,is_semantic_graph,filescan.graph_loader.GraphLoader.is_semantic_graph,graph_loader.py,45,46,self,
+eea2b9557dc6ac22,method,_load_nodes,filescan.graph_loader.GraphLoader._load_nodes,graph_loader.py,52,69,"self, path: Path",
+ec914e4686343c14,method,_load_edges,filescan.graph_loader.GraphLoader._load_edges,graph_loader.py,71,92,"self, path: Path",
+788db200953e4e31,method,_build_indexes,filescan.graph_loader.GraphLoader._build_indexes,graph_loader.py,98,129,self,
+9c6e368adead5686,method,find_symbol_at,filescan.graph_loader.GraphLoader.find_symbol_at,graph_loader.py,135,149,"self, module_path: str, line: int",Only meaningful for AST graphs.
+54d751ff05e28029,method,extract_node_source,filescan.graph_loader.GraphLoader.extract_node_source,graph_loader.py,151,196,"self, project_root, node_id: str",Extract the source code for a node using module_path + lineno/end_lineno.
+a4c0354e62d90c00,method,extract_symbol_at,filescan.graph_loader.GraphLoader.extract_symbol_at,graph_loader.py,198,215,"self, project_root: Union[str, os.PathLike], module_path: str, line: int",Convenience helper:
+5753f8182a1e4ee7,module,filescan.scanner,filescan.scanner,scanner.py,1,1,,
+9c172ba35d1faf70,class,Scanner,filescan.scanner.Scanner,scanner.py,9,115,,
+77e3aac24e56fde4,method,scan,filescan.scanner.Scanner.scan,scanner.py,21,30,self,
+0f5750a7417f8620,method,_node_id,filescan.scanner.Scanner._node_id,scanner.py,36,52,"self, path: Path, root: Path","Stable ID = SHA1(root_name + ""/"" + relative_path)"
+9ea91f0b3c1f7929,method,_edge_id,filescan.scanner.Scanner._edge_id,scanner.py,54,56,"self, source: str, target: str, relation: str",
+198c63a6506d90d1,method,_walk,filescan.scanner.Scanner._walk,scanner.py,62,115,"self, path: Path, root: Path, parent_id: Optional[str]",Recursively walk directory tree and collect nodes + edges.
+9e34d0118f335968,module,filescan.search_engine,filescan.search_engine,search_engine.py,1,1,,
+992bfd08a7520b87,class,SearchEngine,filescan.search_engine.SearchEngine,search_engine.py,22,131,,Hybrid search engine:
+fe36833459a7d59c,method,__init__,filescan.search_engine.SearchEngine.__init__,search_engine.py,29,31,"self, root: Path, graph: GraphLoader",
+d1669e0238ba402a,method,search,filescan.search_engine.SearchEngine.search,search_engine.py,37,100,"self, query: str",
+77155bee62266c00,method,_grep,filescan.search_engine.SearchEngine._grep,search_engine.py,106,131,"self, query: str",
+064cbb789600f09a,module,filescan.utils,filescan.utils,utils.py,1,1,,
+c94e45045aa2c6b4,function,makedir_exist_ok,filescan.utils.makedir_exist_ok,utils.py,6,7,path,
+cfaf1abe8d5149ff,function,load_ignore_spec,filescan.utils.load_ignore_spec,utils.py,10,15,ignore_file: Path,
+1912f35e96a80342,function,simple_decorator,filescan.utils.simple_decorator,utils.py,17,22,func,

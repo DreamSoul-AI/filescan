@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
+import hashlib
 
 from .base import ScannerBase
 from .utils import load_ignore_spec
@@ -17,23 +18,6 @@ class Scanner(ScannerBase):
     # Public
     # -------------------------------------------------
 
-    # def scan(self) -> List[list]:
-    #     """
-    #     Scan the filesystem tree rooted at `self.root`.
-    #
-    #     Returns
-    #     -------
-    #     list of list
-    #         Flat list of nodes following NODE_SCHEMA order.
-    #     """
-    #     self.reset()
-    #
-    #     if self._ignore_spec is None and self.ignore_file is not None:
-    #         self._ignore_spec = load_ignore_spec(self.ignore_file)
-    #
-    #     self._walk(self.root, parent_id=None)
-    #     return self._nodes
-
     def scan(self) -> List[list]:
         self.reset()
 
@@ -41,24 +25,55 @@ class Scanner(ScannerBase):
             self._ignore_spec = load_ignore_spec(self.ignore_file)
 
         for root in self.root:
-            self._walk(root, parent_id=None)
+            self._walk(root, root=root, parent_id=None)
 
         return self._nodes
 
     # -------------------------------------------------
-    # Internal
+    # Identity
     # -------------------------------------------------
 
-    def _walk(self, path: Path, parent_id: Optional[int]) -> None:
+    def _node_id(self, path: Path, root: Path) -> str:
         """
-        Recursively walk the directory tree and collect nodes + edges.
+        Stable ID = SHA1(root_name + "/" + relative_path)
+        """
+        root = root.resolve()
+        path = path.resolve()
+
+        root_name = root.name or "root"
+
+        if path == root:
+            key = root_name
+        else:
+            rel = path.relative_to(root)
+            rel_str = str(rel).replace("\\", "/")
+            key = f"{root_name}/{rel_str}"
+
+        return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+
+    def _edge_id(self, source: str, target: str, relation: str) -> str:
+        key = f"{source}|{relation}|{target}"
+        return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+
+    # -------------------------------------------------
+    # Internal Walk
+    # -------------------------------------------------
+
+    def _walk(
+        self,
+        path: Path,
+        root: Path,
+        parent_id: Optional[str],
+    ) -> None:
+        """
+        Recursively walk directory tree and collect nodes + edges.
         """
 
         # Do not ignore the root itself
         if parent_id is not None and self._is_ignored(path):
             return
 
-        node_id = self._next_node_id_value()
+        node_id = self._node_id(path, root)
         is_dir = path.is_dir()
 
         size: Optional[int] = None
@@ -78,7 +93,8 @@ class Scanner(ScannerBase):
 
         # Add edge (parent -> child)
         if parent_id is not None:
-            self._add_edge(parent_id, node_id, "contains")
+            eid = self._edge_id(parent_id, node_id, "contains")
+            self._add_edge(eid, parent_id, node_id, "contains")
 
         if not is_dir:
             return
@@ -92,4 +108,8 @@ class Scanner(ScannerBase):
             return
 
         for child in children:
-            self._walk(child, parent_id=node_id)
+            self._walk(
+                child,
+                root=root,
+                parent_id=node_id,
+            )
