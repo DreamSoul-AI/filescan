@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Union, Any
 from importlib import resources
 
-
+# TODO: add concat info to one file
 class ScannerBase:
     """
     Base class for graph scanners.

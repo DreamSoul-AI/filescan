@@ -3,92 +3,176 @@ from pathlib import Path
 
 from ..scanner import Scanner
 from ..ast_scanner import AstScanner
+from ..graph_loader import GraphLoader
+from ..search_engine import SearchEngine
+from ..file_watcher import FileWatcher
 
 
 DEFAULT_IGNORE_NAME = ".fscanignore"
 
 
+def resolve_ignore_file(root: Path, ignore_arg: str | None):
+    if ignore_arg:
+        return Path(ignore_arg).expanduser().resolve()
+    candidate = root / DEFAULT_IGNORE_NAME
+    return candidate if candidate.exists() else None
+
+
+def cmd_scan(args):
+    root = Path(args.root).expanduser().resolve()
+    ignore_file = resolve_ignore_file(root, args.ignore_file)
+
+    # Filesystem scan
+    if not args.ast_only:
+        fs = Scanner(root, ignore_file=ignore_file, output=args.output)
+        fs.scan()
+        if args.format == "csv":
+            fs.to_csv()
+        else:
+            fs.to_json()
+
+    # AST scan
+    if args.ast or args.ast_only:
+        ast = AstScanner(root, ignore_file=ignore_file, output=args.output_ast or args.output)
+        ast.scan()
+        if args.format == "csv":
+            ast.to_csv()
+        else:
+            ast.to_json()
+
+
+def cmd_watch(args):
+    root = Path(args.root).expanduser().resolve()
+    ignore_file = resolve_ignore_file(root, args.ignore_file)
+
+    print("=" * 60)
+    print("Watching project:", root)
+    print("=" * 60)
+
+    # Initial full scan
+    print("\nRunning initial scan...\n")
+
+    fs = Scanner(root, ignore_file=ignore_file, output=args.output)
+    fs.scan()
+    fs.to_csv()
+    fs.to_json()
+
+    ast = AstScanner(root, ignore_file=ignore_file, output=args.output_ast or args.output)
+    ast.scan()
+    ast.to_csv()
+    ast.to_json()
+
+    print("\nInitial scan complete.")
+    print("Modify any .py file to trigger re-scan.")
+    print("Press Ctrl+C to stop.\n")
+
+    watcher = FileWatcher(
+        root=root,
+        ignore_file=ignore_file,
+        output=args.output,
+        debounce_seconds=args.debounce,
+    )
+
+    try:
+        watcher.start()
+    except KeyboardInterrupt:
+        print("\nWatcher stopped.")
+
+
+def cmd_search(args):
+    root = Path(args.root).expanduser().resolve()
+
+    nodes_csv = Path(args.nodes)
+    edges_csv = Path(args.edges)
+
+    if not nodes_csv.exists() or not edges_csv.exists():
+        raise SystemExit("Graph CSV files not found.")
+
+    graph = GraphLoader()
+    graph.load(nodes_csv, edges_csv)
+
+    engine = SearchEngine(root, graph)
+
+    results = engine.search(args.query)
+
+    if not results:
+        print("No results found.")
+        return
+
+    printed_symbols = set()
+
+    for r in results:
+        file_path = r["file"]
+        line = r["line"]
+        text = r["text"]
+        match_type = r.get("match_type", "unknown")
+        symbol = r.get("symbol")
+        sid = r.get("symbol_id")
+
+        print("=" * 80)
+        print(f"[{match_type.upper()}]  {file_path}:{line}")
+
+        if symbol:
+            print(f"Symbol: {symbol.get('qualified_name')}")
+        else:
+            print("Symbol: <no semantic symbol>")
+
+        print(f"Code  : {text}")
+
+        if sid and sid not in printed_symbols:
+            printed_symbols.add(sid)
+            snippet = graph.extract_node_source(root, sid)
+            if snippet:
+                print("\n--- Definition Source ---")
+                print(snippet.rstrip())
+                print("--- End Definition ---")
+
+        print()
+
+    print("=" * 80)
+    print(f"Total results: {len(results)}")
+
+
 def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Recursively scan a directory and export its structure "
-            "or Python AST symbols as a flat graph (CSV or JSON)."
-        )
-    )
+    parser = argparse.ArgumentParser(prog="fscan")
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    parser.add_argument(
-        "root",
-        nargs="?",
-        default=".",
-        help="Root directory to scan (default: current directory)",
-    )
+    # ----------------------
+    # scan
+    # ----------------------
+    scan = sub.add_parser("scan", help="Run filesystem and/or AST scan")
+    scan.add_argument("root", help="Root directory to scan")
+    scan.add_argument("--ignore-file")
+    scan.add_argument("--ast", action="store_true", help="Include AST scan")
+    scan.add_argument("--ast-only", action="store_true", help="Only run AST scan")
+    scan.add_argument("-o", "--output", default="graph")
+    scan.add_argument("--output-ast", help="Separate output prefix for AST scan")
+    scan.add_argument("--format", choices=["csv", "json"], default="csv")
+    scan.set_defaults(func=cmd_scan)
 
-    parser.add_argument(
-        "--ignore-file",
-        help=(
-            "Path to a gitignore-style file for excluding paths "
-            f"(default: {DEFAULT_IGNORE_NAME} if present in root)"
-        ),
-    )
+    # ----------------------
+    # watch
+    # ----------------------
+    watch = sub.add_parser("watch", help="Watch project and auto-rescan")
+    watch.add_argument("root", help="Root directory to watch")
+    watch.add_argument("--ignore-file")
+    watch.add_argument("-o", "--output", default="graph")
+    watch.add_argument("--output-ast")
+    watch.add_argument("--debounce", type=float, default=0.5)
+    watch.set_defaults(func=cmd_watch)
 
-    parser.add_argument(
-        "--ast",
-        action="store_true",
-        help="Scan Python AST symbols instead of filesystem structure",
-    )
-
-    parser.add_argument(
-        "-o", "--output",
-        help=(
-            "Output file path (base name). "
-            "If omitted, defaults to <root_name>.csv or .json"
-        ),
-    )
-
-    parser.add_argument(
-        "--format",
-        choices=["csv", "json"],
-        default="csv",
-        help="Output format (default: csv)",
-    )
+    # ----------------------
+    # search
+    # ----------------------
+    search = sub.add_parser("search", help="Search existing AST graph")
+    search.add_argument("root", help="Project root (must match AST scan root)")
+    search.add_argument("query", help="Search query")
+    search.add_argument("--nodes", required=True, help="Path to *_nodes.csv")
+    search.add_argument("--edges", required=True, help="Path to *_edges.csv")
+    search.set_defaults(func=cmd_search)
 
     args = parser.parse_args()
-
-    # Resolve root
-    root = Path(args.root).expanduser().resolve()
-    if not root.exists():
-        raise SystemExit(f"Path does not exist: {root}")
-    if not root.is_dir():
-        raise SystemExit(f"Not a directory: {root}")
-
-    # Resolve ignore file
-    if args.ignore_file:
-        ignore_file = Path(args.ignore_file).expanduser().resolve()
-    else:
-        candidate = Path.cwd() / DEFAULT_IGNORE_NAME
-        ignore_file = candidate if candidate.exists() else None
-
-    # Select scanner
-    if args.ast:
-        scanner = AstScanner(
-            root,
-            ignore_file=ignore_file,
-            output=args.output,
-        )
-    else:
-        scanner = Scanner(
-            root,
-            ignore_file=ignore_file,
-            output=args.output,
-        )
-
-    scanner.scan()
-
-    # Dispatch output
-    if args.format == "csv":
-        scanner.to_csv()
-    else:
-        scanner.to_json()
+    args.func(args)
 
 
 if __name__ == "__main__":
