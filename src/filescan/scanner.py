@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import List, Optional
-import hashlib
 
 from .base import ScannerBase
 from .utils import load_ignore_spec
@@ -30,12 +29,14 @@ class Scanner(ScannerBase):
         return self._nodes
 
     # -------------------------------------------------
-    # Identity
+    # Canonical Identity
     # -------------------------------------------------
 
-    def _node_id(self, path: Path, root: Path) -> str:
+    def _canonical_key(self, path: Path, root: Path) -> str:
         """
-        Stable ID = SHA1(root_name + "/" + relative_path)
+        Logical identity of node.
+        This is what defines uniqueness.
+        Hashing is handled by ScannerBase.
         """
         root = root.resolve()
         path = path.resolve()
@@ -43,17 +44,12 @@ class Scanner(ScannerBase):
         root_name = root.name or "root"
 
         if path == root:
-            key = root_name
-        else:
-            rel = path.relative_to(root)
-            rel_str = str(rel).replace("\\", "/")
-            key = f"{root_name}/{rel_str}"
+            return root_name
 
-        return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+        rel = path.relative_to(root)
+        rel_str = str(rel).replace("\\", "/")
 
-    def _edge_id(self, source: str, target: str, relation: str) -> str:
-        key = f"{source}|{relation}|{target}"
-        return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+        return f"{root_name}/{rel_str}"
 
     # -------------------------------------------------
     # Internal Walk
@@ -73,7 +69,7 @@ class Scanner(ScannerBase):
         if parent_id is not None and self._is_ignored(path):
             return
 
-        node_id = self._node_id(path, root)
+        canonical_key = self._canonical_key(path, root)
         is_dir = path.is_dir()
 
         size: Optional[int] = None
@@ -83,18 +79,21 @@ class Scanner(ScannerBase):
             except OSError:
                 pass
 
-        # Add node
-        self._add_node([
-            node_id,
+        # Add node (ID generated safely by base class)
+        node_id = self._add_node([
+            canonical_key,
             "d" if is_dir else "f",
             path.name,
             size,
         ])
 
-        # Add edge (parent -> child)
+        # Add containment edge
         if parent_id is not None:
-            eid = self._edge_id(parent_id, node_id, "contains")
-            self._add_edge(eid, parent_id, node_id, "contains")
+            self._add_edge(
+                parent_id,
+                node_id,
+                "contains",
+            )
 
         if not is_dir:
             return

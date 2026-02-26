@@ -25,7 +25,7 @@ def main():
     watcher = fscan.FileWatcher(
         root=project_root,
         ignore_file=project_root / "default.fscanignore",
-        output=output_dir,
+        output='output/filescan',
         debounce_seconds=0.5,
     )
 
@@ -40,6 +40,7 @@ def main():
         output='output/filescan',
     )
     fs.scan()
+    fs.to_json()
     fs.to_csv()
 
     ast = fscan.AstScanner(
@@ -48,6 +49,7 @@ def main():
         output='output/filescan_ast',
     )
     ast.scan()
+    ast.to_json()
     ast.to_csv()
 
     print("\nInitial scan complete.")

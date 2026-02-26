@@ -1,6 +1,5 @@
 import astroid
 import os
-import hashlib
 from pathlib import Path
 from typing import List, Optional, Union, Dict
 
@@ -13,8 +12,10 @@ class AstScanner(ScannerBase):
     Astroid-powered semantic scanner.
     Produces cross-file semantic property graph.
 
-    Node IDs: SHA1(qualified_name)[:16]
-    Edge IDs: SHA1(source|relation|target|lineno)[:16]
+    Identity model:
+    - Node canonical key = qualified_name
+    - Edge canonical key = source|relation|target|lineno
+    - ID generation handled safely by ScannerBase
     """
 
     NODE_SCHEMA = [
@@ -46,7 +47,7 @@ class AstScanner(ScannerBase):
     ):
         super().__init__(root, ignore_file, output)
 
-        # qualified_name -> node_id (hashed)
+        # qualified_name -> node_id
         self._qualified_name_to_id: Dict[str, str] = {}
 
         # module_name -> astroid.Module
@@ -82,21 +83,6 @@ class AstScanner(ScannerBase):
         return self._nodes
 
     # =====================================================
-    # Identity helpers
-    # =====================================================
-
-    @staticmethod
-    def _sha16(s: str) -> str:
-        return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
-
-    def _node_id(self, qualified_name: str) -> str:
-        return self._sha16(qualified_name)
-
-    def _edge_id(self, source: str, target: str, relation: str, lineno: Optional[int]) -> str:
-        key = f"{source}|{relation}|{target}|{lineno or ''}"
-        return self._sha16(key)
-
-    # =====================================================
     # Module name resolution
     # =====================================================
 
@@ -108,7 +94,6 @@ class AstScanner(ScannerBase):
         if parts and parts[-1] == "__init__":
             parts = parts[:-1]
 
-        # Namespace with root folder name
         return ".".join([root.name] + parts)
 
     # =====================================================
@@ -152,7 +137,7 @@ class AstScanner(ScannerBase):
 
         self._module_imports[module_name] = import_map
 
-        # Add module node
+        # Add module node (canonical key = module_name)
         mid = self._add_symbol(
             parent_id=None,
             kind="module",
@@ -216,14 +201,13 @@ class AstScanner(ScannerBase):
         signature: str,
         doc: Optional[str],
     ) -> str:
-        sid = self._node_id(qualified_name)
-
         doc1 = ""
         if doc:
             doc1 = doc.strip().splitlines()[0]
 
-        self._add_node([
-            sid,
+        # Canonical key = qualified_name
+        sid = self._add_node([
+            qualified_name,
             kind,
             name,
             qualified_name,
@@ -237,34 +221,13 @@ class AstScanner(ScannerBase):
         self._qualified_name_to_id[qualified_name] = sid
 
         if parent_id is not None:
-            self._add_edge(parent_id, sid, "contains")
+            self._add_edge(
+                parent_id,
+                sid,
+                "contains",
+            )
 
         return sid
-
-    # =====================================================
-    # Edge Creation (scanner-level identity)
-    # =====================================================
-
-    def _add_edge(
-        self,
-        source: str,
-        target: str,
-        relation: str,
-        lineno: Optional[int] = None,
-        end_lineno: Optional[int] = None,
-    ) -> str:
-        edge_id = self._edge_id(source, target, relation, lineno)
-
-        self._edges.append([
-            edge_id,
-            source,
-            target,
-            relation,
-            lineno,
-            end_lineno,
-        ])
-
-        return edge_id
 
     # =====================================================
     # PASS 2 — Semantic Resolution
@@ -287,16 +250,13 @@ class AstScanner(ScannerBase):
     def _resolve_references(self, module_name: str, module: astroid.Module) -> None:
         import_map = self._module_imports.get(module_name, {})
 
-        # -------------------------
-        # IMPORTS (structural)
-        # -------------------------
         module_id = self._qualified_name_to_id.get(module_name)
+
+        # IMPORTS
         for _local, full in import_map.items():
             self._maybe_link(module_id, full, "imports")
 
-        # -------------------------
-        # CALLS (function-level)
-        # -------------------------
+        # CALLS
         for node in module.nodes_of_class(astroid.Call):
             caller_id = self._resolve_caller_id(node)
             if caller_id is None:
@@ -315,9 +275,7 @@ class AstScanner(ScannerBase):
             except Exception:
                 continue
 
-        # -------------------------
-        # INHERITANCE (structural)
-        # -------------------------
+        # INHERITANCE
         for node in module.nodes_of_class(astroid.ClassDef):
             child_id = self._qualified_name_to_id.get(node.qname())
             if not child_id:
@@ -333,7 +291,6 @@ class AstScanner(ScannerBase):
                 if not base_name:
                     continue
 
-                # Imported base
                 if base_name in import_map:
                     self._maybe_link(
                         child_id,
@@ -344,7 +301,6 @@ class AstScanner(ScannerBase):
                     )
                     continue
 
-                # Same-module base
                 local_candidate = f"{module_name}.{base_name}"
                 if local_candidate in self._qualified_name_to_id:
                     self._add_edge(
@@ -355,9 +311,7 @@ class AstScanner(ScannerBase):
                         end_lineno=node.lineno,
                     )
 
-        # -------------------------
-        # REFERENCES (function-level)
-        # -------------------------
+        # REFERENCES
         for node in module.nodes_of_class(astroid.Name):
             caller_id = self._resolve_caller_id(node)
             if caller_id is None:
@@ -365,7 +319,6 @@ class AstScanner(ScannerBase):
 
             symbol = node.name
 
-            # Imported reference
             if symbol in import_map:
                 self._maybe_link(
                     caller_id,
@@ -376,7 +329,6 @@ class AstScanner(ScannerBase):
                 )
                 continue
 
-            # Same-module reference
             local_candidate = f"{module_name}.{symbol}"
             if local_candidate in self._qualified_name_to_id:
                 self._add_edge(

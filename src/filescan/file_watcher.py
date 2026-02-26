@@ -154,6 +154,7 @@ class FileWatcher:
         )
         scanner.scan()
         scanner.to_csv()
+        scanner.to_json()
 
         print("[filesystem] Completed in %.3f seconds" % (time.time() - start))
 
@@ -167,5 +168,6 @@ class FileWatcher:
         )
         ast_scanner.scan()
         ast_scanner.to_csv()
+        ast_scanner.to_json()
 
         print("[ast] Completed in %.3f seconds" % (time.time() - start))
