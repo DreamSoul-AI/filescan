@@ -44,6 +44,10 @@ class GraphLoader:
         self.by_name: Dict[str, List[str]] = defaultdict(list)
         self.symbols_by_file: Dict[str, List[Tuple[int, int, str]]] = defaultdict(list)
 
+        # Track source of nodes/edges for context export
+        self.node_source: Dict[str, str] = {}  # node_id -> "filesystem" or "ast"
+        self.edge_source: List[str] = []  # parallel list to edges
+
     # =====================================================
     # Public API
     # =====================================================
@@ -53,9 +57,16 @@ class GraphLoader:
 
         if nodes_path.suffix == ".json":
             self._load_json(nodes_path)
+            graph_type = "ast" if "ast" in str(nodes_path).lower() else "filesystem"
         else:
             self._load_nodes_csv(nodes_path)
             self._load_edges_csv(edges_path)
+            graph_type = "ast" if "ast" in str(nodes_path).lower() else "filesystem"
+
+        # Tag all loaded nodes/edges with their source
+        for nid in self.nodes.keys():
+            self.node_source[nid] = graph_type
+        self.edge_source = [graph_type] * len(self.edges)
 
         self._build_indexes()
 
@@ -228,3 +239,57 @@ class GraphLoader:
             return None
 
         return self.extract_node_source(project_root, nid)
+
+    # =====================================================
+    # Graph combination / export helpers
+    # =====================================================
+
+    def merge(
+            self,
+            fs_nodes_path: Path,
+            fs_edges_path: Path,
+            output_path: Path,
+            ast_nodes_path: Optional[Path] = None,
+            ast_edges_path: Optional[Path] = None,
+    ) -> None:
+        """
+        Concatenate filesystem and optional AST CSV files into ONE file.
+
+        The resulting file contains up to four sections:
+            - FILESYSTEM NODES
+            - FILESYSTEM EDGES
+            - AST NODES (optional)
+            - AST EDGES (optional)
+
+        This does NOT merge schemas.
+        This does NOT modify CSV content.
+        It simply concatenates files with clear section separators.
+        """
+
+        sections = [
+            ("FILESYSTEM NODES", fs_nodes_path),
+            ("FILESYSTEM EDGES", fs_edges_path),
+        ]
+
+        if ast_nodes_path and ast_edges_path:
+            sections.extend([
+                ("AST NODES", ast_nodes_path),
+                ("AST EDGES", ast_edges_path),
+            ])
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with output_path.open("w", encoding="utf-8") as out:
+            for title, path in sections:
+                out.write("# " + "=" * 78 + "\n")
+                out.write(f"# {title}\n")
+                out.write("# " + "=" * 78 + "\n\n")
+
+                if not path.exists():
+                    out.write(f"# Missing file: {path}\n\n")
+                    continue
+
+                with path.open("r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    out.write(content)
+                    out.write("\n\n")

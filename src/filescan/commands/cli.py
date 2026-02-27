@@ -132,6 +132,44 @@ def cmd_search(args):
     print("=" * 80)
     print(f"Total results: {len(results)}")
 
+def cmd_context(args):
+    """
+    Build a single context file by concatenating:
+      - filesystem nodes CSV
+      - filesystem edges CSV
+      - optional AST nodes CSV
+      - optional AST edges CSV
+
+    Uses GraphLoader.merge(...) which performs the concatenation.
+    """
+    fs_nodes = Path(args.fs_nodes)
+    fs_edges = Path(args.fs_edges)
+
+    if not fs_nodes.exists() or not fs_edges.exists():
+        raise SystemExit("Filesystem graph CSV files not found.")
+
+    ast_nodes = Path(args.ast_nodes) if args.ast_nodes else None
+    ast_edges = Path(args.ast_edges) if args.ast_edges else None
+
+    # If one AST file is provided, require the other as well
+    if (ast_nodes is None) != (ast_edges is None):
+        raise SystemExit("Provide both --ast-nodes and --ast-edges, or neither.")
+
+    if ast_nodes and (not ast_nodes.exists() or not ast_edges.exists()):
+        raise SystemExit("AST graph CSV files not found.")
+
+    out_path = Path(args.output)
+
+    graph = GraphLoader()
+    graph.merge(
+        fs_nodes_path=fs_nodes,
+        fs_edges_path=fs_edges,
+        output_path=out_path,
+        ast_nodes_path=ast_nodes,
+        ast_edges_path=ast_edges,
+    )
+
+    print(f"Wrote context to: {out_path}")
 
 def main():
     parser = argparse.ArgumentParser(prog="fscan")
@@ -170,6 +208,17 @@ def main():
     search.add_argument("--nodes", required=True, help="Path to *_nodes.csv")
     search.add_argument("--edges", required=True, help="Path to *_edges.csv")
     search.set_defaults(func=cmd_search)
+
+    # ----------------------
+    # context
+    # ----------------------
+    context = sub.add_parser("context", help="Concatenate FS/AST CSV graphs into one context file")
+    context.add_argument("--fs-nodes", required=True, help="Path to filesystem *_nodes.csv")
+    context.add_argument("--fs-edges", required=True, help="Path to filesystem *_edges.csv")
+    context.add_argument("--ast-nodes", help="Path to AST *_nodes.csv (optional)")
+    context.add_argument("--ast-edges", help="Path to AST *_edges.csv (optional)")
+    context.add_argument("-o", "--output", required=True, help="Output file path for merged context")
+    context.set_defaults(func=cmd_context)
 
     args = parser.parse_args()
     args.func(args)
