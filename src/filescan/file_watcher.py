@@ -8,7 +8,6 @@ from watchfiles import watch, Change
 from .scanner import Scanner
 from .ast_scanner import AstScanner
 
-
 PathLike = Union[str, Path]
 
 
@@ -30,11 +29,11 @@ class FileWatcher:
     """
 
     def __init__(
-        self,
-        root: PathLike,
-        ignore_file: Optional[PathLike] = None,
-        output: Optional[PathLike] = None,
-        debounce_seconds: float = 0.5,
+            self,
+            root: PathLike,
+            ignore_file: Optional[PathLike] = None,
+            output: Optional[PathLike] = None,
+            debounce_seconds: float = 0.5,
     ) -> None:
 
         self.root = Path(root).resolve()
@@ -95,7 +94,7 @@ class FileWatcher:
     # ---------------------------------------------------------
 
     def _should_trigger_filesystem_scan(
-        self, changes: Set[Tuple[Change, str]]
+            self, changes: Set[Tuple[Change, str]]
     ) -> bool:
         for change, _ in changes:
             if change in (Change.added, Change.deleted):
@@ -103,7 +102,7 @@ class FileWatcher:
         return False
 
     def _should_trigger_ast_scan(
-        self, changes: Set[Tuple[Change, str]]
+            self, changes: Set[Tuple[Change, str]]
     ) -> bool:
         for _, path_str in changes:
             if Path(path_str).suffix == ".py":
@@ -115,10 +114,10 @@ class FileWatcher:
     # ---------------------------------------------------------
 
     def _handle_changes(
-        self,
-        changes: Set[Tuple[Change, str]],
-        fs_trigger: bool,
-        ast_trigger: bool,
+            self,
+            changes: Set[Tuple[Change, str]],
+            fs_trigger: bool,
+            ast_trigger: bool,
     ) -> None:
 
         print("\n----------------------------------------")

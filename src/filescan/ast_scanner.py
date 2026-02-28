@@ -40,10 +40,10 @@ class AstScanner(ScannerBase):
     ]
 
     def __init__(
-        self,
-        root: Union[str, Path],
-        ignore_file: Optional[Union[str, Path]] = None,
-        output: Optional[Union[str, Path]] = None,
+            self,
+            root: Union[str, Path],
+            ignore_file: Optional[Union[str, Path]] = None,
+            output: Optional[Union[str, Path]] = None,
     ):
         super().__init__(root, ignore_file, output)
 
@@ -190,16 +190,16 @@ class AstScanner(ScannerBase):
     # =====================================================
 
     def _add_symbol(
-        self,
-        parent_id: Optional[str],
-        kind: str,
-        name: str,
-        qualified_name: str,
-        module_path: str,
-        lineno: int,
-        end_lineno: int,
-        signature: str,
-        doc: Optional[str],
+            self,
+            parent_id: Optional[str],
+            kind: str,
+            name: str,
+            qualified_name: str,
+            module_path: str,
+            lineno: int,
+            end_lineno: int,
+            signature: str,
+            doc: Optional[str],
     ) -> str:
         doc1 = ""
         if doc:
@@ -328,12 +328,12 @@ class AstScanner(ScannerBase):
     # =====================================================
 
     def _maybe_link(
-        self,
-        source_id: Optional[str],
-        qualified_name: str,
-        relation: str,
-        lineno: Optional[int] = None,
-        end_lineno: Optional[int] = None,
+            self,
+            source_id: Optional[str],
+            qualified_name: str,
+            relation: str,
+            lineno: Optional[int] = None,
+            end_lineno: Optional[int] = None,
     ) -> None:
         target_id = self._qualified_name_to_id.get(qualified_name)
         if source_id is not None and target_id is not None:

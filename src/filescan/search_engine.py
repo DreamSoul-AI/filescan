@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
-from .graph_builder import GraphBuilder
 
 # -------------------------------------------------
 # Sort by semantic priority
@@ -23,12 +22,15 @@ class SearchEngine:
     """
     Hybrid search engine:
     - ripgrep for fast text search
-    - GraphLoader for semantic enrichment
+    - AST graph for semantic enrichment
     """
 
-    def __init__(self, root: Path, graph: GraphBuilder):
+    def __init__(self, root: Path, ast_graph):
+        """
+        ast_graph must be builder.ast (NOT GraphBuilder).
+        """
         self.root = os.path.abspath(os.fspath(root))
-        self.graph = graph
+        self.graph = ast_graph
 
     # -------------------------------------------------
     # Public API
@@ -54,8 +56,11 @@ class SearchEngine:
             container_id = None
             container = None
 
-            if module_path and self.graph.is_semantic_graph():
-                container_id = self.graph.find_symbol_at(
+            # -------------------------------------------------
+            # Resolve enclosing symbol
+            # -------------------------------------------------
+            if module_path:
+                container_id = self._find_symbol_at(
                     module_path,
                     m["line"],
                 )
@@ -68,7 +73,7 @@ class SearchEngine:
                 try:
                     if int(container["lineno"]) == m["line"]:
                         match_type = "definition"
-                except ValueError:
+                except (ValueError, TypeError):
                     pass
 
             # -------------------------------------------------
@@ -98,6 +103,22 @@ class SearchEngine:
         )
 
         return results
+
+    # -------------------------------------------------
+    # Symbol Resolver
+    # -------------------------------------------------
+
+    def _find_symbol_at(self, module_path: str, line: int):
+        candidates = []
+
+        for start, end, nid in self.graph.symbols_by_file.get(module_path, []):
+            if start <= line <= end:
+                candidates.append((end - start, nid))
+
+        if not candidates:
+            return None
+
+        return min(candidates)[1]
 
     # -------------------------------------------------
     # Ripgrep Layer

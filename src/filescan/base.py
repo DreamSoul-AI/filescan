@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Union, Any
 from importlib import resources
 
-# TODO: add concat info to one file
+
 class ScannerBase:
     """
     Base class for graph scanners.
@@ -35,10 +35,10 @@ class ScannerBase:
     # =====================================================
 
     def __init__(
-        self,
-        root: Union[str, Path, List[Union[str, Path]]],
-        ignore_file: Optional[Union[str, Path]] = None,
-        output: Optional[Union[str, Path]] = None,
+            self,
+            root: Union[str, Path, List[Union[str, Path]]],
+            ignore_file: Optional[Union[str, Path]] = None,
+            output: Optional[Union[str, Path]] = None,
     ):
         if isinstance(root, (str, Path)):
             roots = [root]
@@ -161,11 +161,11 @@ class ScannerBase:
     # =====================================================
 
     def _generate_unique_edge_id(
-        self,
-        source: str,
-        target: str,
-        relation: str,
-        lineno: Optional[int] = None,
+            self,
+            source: str,
+            target: str,
+            relation: str,
+            lineno: Optional[int] = None,
     ) -> str:
         canonical_key = f"{source}|{relation}|{target}|{lineno or ''}"
 
@@ -197,12 +197,12 @@ class ScannerBase:
     # -----------------------------------------------------
 
     def _add_edge(
-        self,
-        source: str,
-        target: str,
-        relation: str,
-        lineno: Optional[int] = None,
-        end_lineno: Optional[int] = None,
+            self,
+            source: str,
+            target: str,
+            relation: str,
+            lineno: Optional[int] = None,
+            end_lineno: Optional[int] = None,
     ) -> str:
         edge_id = self._generate_unique_edge_id(
             source, target, relation, lineno
@@ -266,8 +266,8 @@ class ScannerBase:
     # -----------------------------------------------------
 
     def _resolve_prefix(
-        self,
-        output: Optional[Union[str, Path]],
+            self,
+            output: Optional[Union[str, Path]],
     ) -> Path:
 
         if output is not None:
@@ -289,10 +289,10 @@ class ScannerBase:
     # =====================================================
 
     def to_csv(
-        self,
-        output: Optional[Union[str, Path]] = None,
-        *,
-        include_schema_comment: bool = True,
+            self,
+            output: Optional[Union[str, Path]] = None,
+            *,
+            include_schema_comment: bool = True,
     ) -> None:
         if not self._nodes:
             raise RuntimeError("No scan results available. Call scan() first.")
@@ -349,10 +349,10 @@ class ScannerBase:
 
     @staticmethod
     def _write_csv(
-        path: Path,
-        schema: List[tuple],
-        rows: List[list],
-        include_schema_comment: bool,
+            path: Path,
+            schema: List[tuple],
+            rows: List[list],
+            include_schema_comment: bool,
     ) -> None:
 
         with path.open("w", newline="", encoding="utf-8") as f:

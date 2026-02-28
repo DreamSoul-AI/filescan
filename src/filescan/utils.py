@@ -14,6 +14,7 @@ def load_ignore_spec(ignore_file: Path):
     ignore_spec = PathSpec.from_lines("gitwildmatch", patterns)
     return ignore_spec
 
+
 def simple_decorator(func):
     def wrapper(*args, **kwargs):
         print(f"Calling {func.__name__}")

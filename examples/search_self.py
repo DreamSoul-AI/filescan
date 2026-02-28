@@ -11,7 +11,7 @@ def main():
     root = project_root
 
     # -------------------------------------------------
-    # Load AST graph (from existing CSV export)
+    # Load AST graph
     # -------------------------------------------------
     nodes_csv = Path("output/filescan_ast_nodes.csv")
     edges_csv = Path("output/filescan_ast_edges.csv")
@@ -21,16 +21,21 @@ def main():
         print("Please run GraphBuilder.build() first.")
         return
 
-    graph = fscan.GraphBuilder()
-    graph.load(nodes_csv, edges_csv)
+    builder = fscan.GraphBuilder()
+    builder.load(nodes_csv, edges_csv, target="ast")
 
-    print("Graph loaded.")
-    print("Semantic graph:", graph.is_semantic_graph())
+    if not builder.has_ast():
+        print("AST graph failed to load.")
+        return
+
+    print("AST graph loaded.")
+    print("Symbols indexed:", len(builder.ast.by_qname))
+    print()
 
     # -------------------------------------------------
-    # Create search engine
+    # Create search engine (AST graph only)
     # -------------------------------------------------
-    engine = fscan.SearchEngine(root, graph)
+    engine = fscan.SearchEngine(root, builder.ast)
 
     query = "_add_symbol"
     print(f"\nSearching for: {query}\n")
@@ -68,7 +73,7 @@ def main():
         if sid and sid not in printed_symbols:
             printed_symbols.add(sid)
 
-            snippet = graph.extract_node_source(project_root, sid)
+            snippet = builder.extract_node_source(project_root, sid)
             if snippet:
                 print("\n--- Definition Source ---")
                 print(snippet.rstrip())

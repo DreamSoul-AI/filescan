@@ -56,10 +56,10 @@ class Scanner(ScannerBase):
     # -------------------------------------------------
 
     def _walk(
-        self,
-        path: Path,
-        root: Path,
-        parent_id: Optional[str],
+            self,
+            path: Path,
+            root: Path,
+            parent_id: Optional[str],
     ) -> None:
         """
         Recursively walk directory tree and collect nodes + edges.

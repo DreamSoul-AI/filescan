@@ -3,7 +3,7 @@ from pathlib import Path
 
 from ..scanner import Scanner
 from ..ast_scanner import AstScanner
-from ..graph_loader import GraphLoader
+from ..graph_builder import GraphBuilder
 from ..search_engine import SearchEngine
 from ..file_watcher import FileWatcher
 
@@ -11,12 +11,20 @@ from ..file_watcher import FileWatcher
 DEFAULT_IGNORE_NAME = ".fscanignore"
 
 
+# =====================================================
+# Helpers
+# =====================================================
+
 def resolve_ignore_file(root: Path, ignore_arg: str | None):
     if ignore_arg:
         return Path(ignore_arg).expanduser().resolve()
     candidate = root / DEFAULT_IGNORE_NAME
     return candidate if candidate.exists() else None
 
+
+# =====================================================
+# Scan Command
+# =====================================================
 
 def cmd_scan(args):
     root = Path(args.root).expanduser().resolve()
@@ -33,13 +41,21 @@ def cmd_scan(args):
 
     # AST scan
     if args.ast or args.ast_only:
-        ast = AstScanner(root, ignore_file=ignore_file, output=args.output_ast or args.output)
+        ast = AstScanner(
+            root,
+            ignore_file=ignore_file,
+            output=args.output_ast or args.output,
+        )
         ast.scan()
         if args.format == "csv":
             ast.to_csv()
         else:
             ast.to_json()
 
+
+# =====================================================
+# Watch Command
+# =====================================================
 
 def cmd_watch(args):
     root = Path(args.root).expanduser().resolve()
@@ -49,7 +65,6 @@ def cmd_watch(args):
     print("Watching project:", root)
     print("=" * 60)
 
-    # Initial full scan
     print("\nRunning initial scan...\n")
 
     fs = Scanner(root, ignore_file=ignore_file, output=args.output)
@@ -57,7 +72,11 @@ def cmd_watch(args):
     fs.to_csv()
     fs.to_json()
 
-    ast = AstScanner(root, ignore_file=ignore_file, output=args.output_ast or args.output)
+    ast = AstScanner(
+        root,
+        ignore_file=ignore_file,
+        output=args.output_ast or args.output,
+    )
     ast.scan()
     ast.to_csv()
     ast.to_json()
@@ -79,6 +98,10 @@ def cmd_watch(args):
         print("\nWatcher stopped.")
 
 
+# =====================================================
+# Search Command
+# =====================================================
+
 def cmd_search(args):
     root = Path(args.root).expanduser().resolve()
 
@@ -86,12 +109,16 @@ def cmd_search(args):
     edges_csv = Path(args.edges)
 
     if not nodes_csv.exists() or not edges_csv.exists():
-        raise SystemExit("Graph CSV files not found.")
+        raise SystemExit("AST graph CSV files not found.")
 
-    graph = GraphLoader()
-    graph.load(nodes_csv, edges_csv)
+    # Load AST graph into builder
+    builder = GraphBuilder()
+    builder.load(nodes_csv, edges_csv, target="ast")
 
-    engine = SearchEngine(root, graph)
+    if not builder.has_ast():
+        raise SystemExit("Failed to load AST graph.")
+
+    engine = SearchEngine(root, builder.ast)
 
     results = engine.search(args.query)
 
@@ -119,9 +146,10 @@ def cmd_search(args):
 
         print(f"Code  : {text}")
 
+        # Extract definition once per symbol
         if sid and sid not in printed_symbols:
             printed_symbols.add(sid)
-            snippet = graph.extract_node_source(root, sid)
+            snippet = builder.extract_node_source(root, sid)
             if snippet:
                 print("\n--- Definition Source ---")
                 print(snippet.rstrip())
@@ -132,16 +160,16 @@ def cmd_search(args):
     print("=" * 80)
     print(f"Total results: {len(results)}")
 
+
+# =====================================================
+# Context Command
+# =====================================================
+
 def cmd_context(args):
     """
-    Build a single context file by concatenating:
-      - filesystem nodes CSV
-      - filesystem edges CSV
-      - optional AST nodes CSV
-      - optional AST edges CSV
-
-    Uses GraphLoader.merge(...) which performs the concatenation.
+    Concatenate FS and AST CSV graphs into one context file.
     """
+
     fs_nodes = Path(args.fs_nodes)
     fs_edges = Path(args.fs_edges)
 
@@ -151,7 +179,6 @@ def cmd_context(args):
     ast_nodes = Path(args.ast_nodes) if args.ast_nodes else None
     ast_edges = Path(args.ast_edges) if args.ast_edges else None
 
-    # If one AST file is provided, require the other as well
     if (ast_nodes is None) != (ast_edges is None):
         raise SystemExit("Provide both --ast-nodes and --ast-edges, or neither.")
 
@@ -160,16 +187,22 @@ def cmd_context(args):
 
     out_path = Path(args.output)
 
-    graph = GraphLoader()
-    graph.merge(
+    builder = GraphBuilder()
+
+    builder.export_context_merged(
+        output_path=out_path,
         fs_nodes_path=fs_nodes,
         fs_edges_path=fs_edges,
-        output_path=out_path,
         ast_nodes_path=ast_nodes,
         ast_edges_path=ast_edges,
     )
 
     print(f"Wrote context to: {out_path}")
+
+
+# =====================================================
+# CLI
+# =====================================================
 
 def main():
     parser = argparse.ArgumentParser(prog="fscan")
@@ -205,19 +238,22 @@ def main():
     search = sub.add_parser("search", help="Search existing AST graph")
     search.add_argument("root", help="Project root (must match AST scan root)")
     search.add_argument("query", help="Search query")
-    search.add_argument("--nodes", required=True, help="Path to *_nodes.csv")
-    search.add_argument("--edges", required=True, help="Path to *_edges.csv")
+    search.add_argument("--nodes", required=True, help="Path to AST *_nodes.csv")
+    search.add_argument("--edges", required=True, help="Path to AST *_edges.csv")
     search.set_defaults(func=cmd_search)
 
     # ----------------------
     # context
     # ----------------------
-    context = sub.add_parser("context", help="Concatenate FS/AST CSV graphs into one context file")
-    context.add_argument("--fs-nodes", required=True, help="Path to filesystem *_nodes.csv")
-    context.add_argument("--fs-edges", required=True, help="Path to filesystem *_edges.csv")
-    context.add_argument("--ast-nodes", help="Path to AST *_nodes.csv (optional)")
-    context.add_argument("--ast-edges", help="Path to AST *_edges.csv (optional)")
-    context.add_argument("-o", "--output", required=True, help="Output file path for merged context")
+    context = sub.add_parser(
+        "context",
+        help="Concatenate FS/AST CSV graphs into one context file",
+    )
+    context.add_argument("--fs-nodes", required=True)
+    context.add_argument("--fs-edges", required=True)
+    context.add_argument("--ast-nodes")
+    context.add_argument("--ast-edges")
+    context.add_argument("-o", "--output", required=True)
     context.set_defaults(func=cmd_context)
 
     args = parser.parse_args()
