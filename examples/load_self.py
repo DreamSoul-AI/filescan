@@ -29,46 +29,52 @@ def print_sample_edges(graph, limit=5):
 
 
 def main():
+    graph = fscan.GraphBuilder()
+
     # -------------------------------------------------
     # Load filesystem graph
     # -------------------------------------------------
-
     print("Loading filesystem graph...")
 
     fs_nodes = Path("output/filescan_nodes.csv")
     fs_edges = Path("output/filescan_edges.csv")
 
-    fs_graph = fscan.GraphLoader()
-    fs_graph.load(fs_nodes, fs_edges)
+    if not fs_nodes.exists() or not fs_edges.exists():
+        print("Filesystem graph files not found.")
+        return
+
+    graph.load(fs_nodes, fs_edges)
 
     print("Filesystem graph loaded.")
-    print_basic_graph_info(fs_graph)
-    print_sample_nodes(fs_graph)
-    print_sample_edges(fs_graph)
+    print_basic_graph_info(graph)
+    print_sample_nodes(graph)
+    print_sample_edges(graph)
 
     # -------------------------------------------------
-    # Load AST graph
+    # Load AST graph (same instance reused)
     # -------------------------------------------------
-
     print("Loading AST graph...")
 
     ast_nodes = Path("output/filescan_ast_nodes.csv")
     ast_edges = Path("output/filescan_ast_edges.csv")
 
-    ast_graph = fscan.GraphLoader()
-    ast_graph.load(ast_nodes, ast_edges)
+    if not ast_nodes.exists() or not ast_edges.exists():
+        print("AST graph files not found.")
+        return
+
+    graph.load(ast_nodes, ast_edges)
 
     print("AST graph loaded.")
-    print_basic_graph_info(ast_graph)
-    print_sample_nodes(ast_graph)
-    print_sample_edges(ast_graph)
+    print_basic_graph_info(graph)
+    print_sample_nodes(graph)
+    print_sample_edges(graph)
 
     # Example semantic check
-    if ast_graph.is_semantic_graph():
+    if graph.is_semantic_graph():
         print("Example semantic lookup:")
-        print("Symbols indexed:", len(ast_graph.by_qname))
-        print("Files indexed:", len(ast_graph.symbols_by_file))
-    return
+        print("Symbols indexed:", len(graph.by_qname))
+        print("Files indexed:", len(graph.symbols_by_file))
+        print()
 
 
 if __name__ == "__main__":

@@ -294,17 +294,14 @@ class ScannerBase:
         *,
         include_schema_comment: bool = True,
     ) -> None:
-
         if not self._nodes:
             raise RuntimeError("No scan results available. Call scan() first.")
 
         prefix = self._resolve_prefix(output)
-
         nodes_path = prefix.with_name(prefix.name + "_nodes.csv")
         edges_path = prefix.with_name(prefix.name + "_edges.csv")
 
         nodes_path.parent.mkdir(parents=True, exist_ok=True)
-
         self._write_csv(
             nodes_path,
             self.NODE_SCHEMA,

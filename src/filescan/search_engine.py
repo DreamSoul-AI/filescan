@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any
 
-from .graph_loader import GraphLoader
+from .graph_builder import GraphBuilder
 
 # -------------------------------------------------
 # Sort by semantic priority
@@ -26,7 +26,7 @@ class SearchEngine:
     - GraphLoader for semantic enrichment
     """
 
-    def __init__(self, root: Path, graph: GraphLoader):
+    def __init__(self, root: Path, graph: GraphBuilder):
         self.root = os.path.abspath(os.fspath(root))
         self.graph = graph
 

@@ -11,7 +11,6 @@ def main():
     # -------------------------------------------------
     project_root = Path("../src/filescan").resolve()
     output_dir = Path("output")
-
     output_dir.mkdir(exist_ok=True)
 
     print("=" * 60)
@@ -19,42 +18,38 @@ def main():
     print("Output directory :", output_dir)
     print("=" * 60)
 
-    # -------------------------------------------------
-    # Create watcher
-    # -------------------------------------------------
-    watcher = fscan.FileWatcher(
-        root=project_root,
-        ignore_file=project_root / "default.fscanignore",
-        output='output/filescan',
-        debounce_seconds=0.5,
-    )
+    ignore_file = project_root / "default.fscanignore"
+    if not ignore_file.exists():
+        ignore_file = None
 
     # -------------------------------------------------
-    # Initial full scan
+    # Initial full scan (via GraphBuilder)
     # -------------------------------------------------
     print("\nRunning initial scan...\n")
 
-    fs = fscan.Scanner(
-        root=project_root,
-        ignore_file=project_root / "default.fscanignore",
-        output='output/filescan',
-    )
-    fs.scan()
-    fs.to_json()
-    fs.to_csv()
+    builder = fscan.GraphBuilder()
 
-    ast = fscan.AstScanner(
-        root=project_root,
-        ignore_file=project_root / "default.fscanignore",
-        output='output/filescan_ast',
+    # Build in-memory graph (AST + FS)
+    builder.build(
+        roots=[project_root],
+        ignore_file=ignore_file,
+        include_filesystem=True,
+        include_ast=True,
     )
-    ast.scan()
-    ast.to_json()
-    ast.to_csv()
 
     print("\nInitial scan complete.")
     print("Modify any .py file to trigger re-scan.")
     print("Press Ctrl+C to stop.\n")
+
+    # -------------------------------------------------
+    # Create watcher (unchanged behavior)
+    # -------------------------------------------------
+    watcher = fscan.FileWatcher(
+        root=project_root,
+        ignore_file=ignore_file,
+        output="output/filescan",
+        debounce_seconds=0.5,
+    )
 
     # -------------------------------------------------
     # Start watching (blocking)

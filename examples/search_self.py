@@ -11,12 +11,17 @@ def main():
     root = project_root
 
     # -------------------------------------------------
-    # Load AST graph
+    # Load AST graph (from existing CSV export)
     # -------------------------------------------------
     nodes_csv = Path("output/filescan_ast_nodes.csv")
     edges_csv = Path("output/filescan_ast_edges.csv")
 
-    graph = fscan.GraphLoader()
+    if not nodes_csv.exists() or not edges_csv.exists():
+        print("AST graph files not found.")
+        print("Please run GraphBuilder.build() first.")
+        return
+
+    graph = fscan.GraphBuilder()
     graph.load(nodes_csv, edges_csv)
 
     print("Graph loaded.")
@@ -49,20 +54,17 @@ def main():
         symbol = r.get("symbol")
         sid = r.get("symbol_id")
 
-        # ---- Header ----
         print("=" * 80)
         print(f"[{match_type.upper()}]  {file_path}:{line}")
 
-        # ---- Symbol Info ----
         if symbol:
             print(f"Symbol: {symbol.get('qualified_name')}")
         else:
             print("Symbol: <no semantic symbol>")
 
-        # ---- Matched Line ----
         print(f"Code  : {text}")
 
-        # ---- Extract Definition (once per symbol) ----
+        # Extract definition once per symbol
         if sid and sid not in printed_symbols:
             printed_symbols.add(sid)
 

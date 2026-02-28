@@ -282,34 +282,18 @@ class AstScanner(ScannerBase):
                 continue
 
             for base in node.bases:
-                base_name = None
-                if isinstance(base, astroid.Name):
-                    base_name = base.name
-                elif isinstance(base, astroid.Attribute):
-                    base_name = base.attrname
-
-                if not base_name:
+                try:
+                    for inferred in base.infer():
+                        if hasattr(inferred, "qname"):
+                            self._maybe_link(
+                                child_id,
+                                inferred.qname(),
+                                "inherits",
+                                lineno=node.lineno,
+                                end_lineno=node.lineno,
+                            )
+                except Exception:
                     continue
-
-                if base_name in import_map:
-                    self._maybe_link(
-                        child_id,
-                        import_map[base_name],
-                        "inherits",
-                        lineno=node.lineno,
-                        end_lineno=node.lineno,
-                    )
-                    continue
-
-                local_candidate = f"{module_name}.{base_name}"
-                if local_candidate in self._qualified_name_to_id:
-                    self._add_edge(
-                        child_id,
-                        self._qualified_name_to_id[local_candidate],
-                        "inherits",
-                        lineno=node.lineno,
-                        end_lineno=node.lineno,
-                    )
 
         # REFERENCES
         for node in module.nodes_of_class(astroid.Name):
