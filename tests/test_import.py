@@ -1,29 +1,23 @@
-import os
-import sys
 from importlib.resources import files
 
 
-def test_import():
+def test_package_importable():
     import filescan
+
+    # Ensure module has a file location
+    assert hasattr(filescan, "__file__")
+    assert filescan.__file__ is not None
+
+
+def test_package_resources_accessible():
     pkg_root = files("filescan")
 
-    # Not all packaging modes include extra data files; ensure import works and
-    # at least the package directory is accessible.
-    assert pkg_root.exists()
-    # try reading license if present, but don't fail the test if it's missing
+    # Ensure package root exists
+    assert pkg_root.is_dir()
+
+    # Try reading common metadata files if packaged
     for fname in ("LICENSE", "README.md", "README_zh.md"):
         p = pkg_root / fname
         if p.exists():
-            _ = p.read_text(encoding="utf-8")
-    return
-
-
-def main():
-    test_import()
-
-
-if __name__ == "__main__":
-    main()
-
-
-
+            text = p.read_text(encoding="utf-8")
+            assert isinstance(text, str)

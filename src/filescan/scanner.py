@@ -10,6 +10,7 @@ class Scanner(ScannerBase):
         ("id", "Unique node ID"),
         ("type", "Node type: 'd' = directory, 'f' = file"),
         ("name", "Base name of the file or directory"),
+        ("abs_path", "Absolute path of file or directory"),
         ("size", "File size in bytes; null for directories"),
     ]
 
@@ -35,7 +36,7 @@ class Scanner(ScannerBase):
     def _canonical_key(self, path: Path, root: Path) -> str:
         """
         Logical identity of node.
-        This is what defines uniqueness.
+        This defines uniqueness.
         Hashing is handled by ScannerBase.
         """
         root = root.resolve()
@@ -56,10 +57,10 @@ class Scanner(ScannerBase):
     # -------------------------------------------------
 
     def _walk(
-            self,
-            path: Path,
-            root: Path,
-            parent_id: Optional[str],
+        self,
+        path: Path,
+        root: Path,
+        parent_id: Optional[str],
     ) -> None:
         """
         Recursively walk directory tree and collect nodes + edges.
@@ -79,11 +80,15 @@ class Scanner(ScannerBase):
             except OSError:
                 pass
 
+        # Normalize absolute path to POSIX style
+        abs_path = str(path.resolve().as_posix())
+
         # Add node (ID generated safely by base class)
         node_id = self._add_node([
-            canonical_key,
+            canonical_key,                 # used for hashing (logical identity)
             "d" if is_dir else "f",
             path.name,
+            abs_path,
             size,
         ])
 

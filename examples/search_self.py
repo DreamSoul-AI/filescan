@@ -7,8 +7,8 @@ def main():
     # -------------------------------------------------
     # Project root (must match AST scan root)
     # -------------------------------------------------
-    project_root = Path("../src/filescan").resolve()
-    root = project_root
+    # root = Path("../src/filescan").resolve()
+    root = Path("..").resolve()
 
     # -------------------------------------------------
     # Load AST graph
@@ -73,7 +73,7 @@ def main():
         if sid and sid not in printed_symbols:
             printed_symbols.add(sid)
 
-            snippet = builder.extract_node_source(project_root, sid)
+            snippet = builder.extract_node_source(root, sid)
             if snippet:
                 print("\n--- Definition Source ---")
                 print(snippet.rstrip())

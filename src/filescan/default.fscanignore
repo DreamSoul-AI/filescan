@@ -117,4 +117,7 @@ output
 
 .idea/
 .vscode/
+.git/
+.pytest_cache/
 .DS_Store
+

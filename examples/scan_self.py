@@ -5,7 +5,8 @@ import filescan as fscan
 
 def main():
     # Root directory to scan
-    root = Path("../src/filescan")
+    # root = Path("../src/filescan")
+    root = Path("..")
 
     # Optional ignore file (CWD-based, same logic as CLI)
     ignore_file = Path("self.fscanignore")

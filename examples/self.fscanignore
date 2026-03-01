@@ -118,3 +118,6 @@ output
 .idea/
 .vscode/
 .DS_Store
+
+.git/
+.pytest_cache/

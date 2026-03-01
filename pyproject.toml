@@ -22,7 +22,9 @@ classifiers = [
 ]
 
 dependencies = [
-  "pathspec>=0.10.3"
+  "astroid==4.1.1",
+  "pathspec==0.10.3",
+  "watchfiles==1.0.5"
 ]
 
 [project.urls]

@@ -1,4 +1,6 @@
 import astroid
+from astroid import nodes
+
 import os
 from pathlib import Path
 from typing import List, Optional, Union, Dict
@@ -40,20 +42,15 @@ class AstScanner(ScannerBase):
     ]
 
     def __init__(
-            self,
-            root: Union[str, Path],
-            ignore_file: Optional[Union[str, Path]] = None,
-            output: Optional[Union[str, Path]] = None,
+        self,
+        root: Union[str, Path],
+        ignore_file: Optional[Union[str, Path]] = None,
+        output: Optional[Union[str, Path]] = None,
     ):
         super().__init__(root, ignore_file, output)
 
-        # qualified_name -> node_id
         self._qualified_name_to_id: Dict[str, str] = {}
-
-        # module_name -> astroid.Module
-        self._ast_modules: Dict[str, astroid.Module] = {}
-
-        # module_name -> {local_name: full_qualified_name}
+        self._ast_modules: Dict[str, nodes.Module] = {}
         self._module_imports: Dict[str, Dict[str, str]] = {}
 
     # =====================================================
@@ -81,6 +78,21 @@ class AstScanner(ScannerBase):
             self._resolve_references(module_name, module)
 
         return self._nodes
+
+    # =====================================================
+    # Docstring helper (modern astroid-safe)
+    # =====================================================
+
+    def _get_docstring_first_line(self, node) -> Optional[str]:
+        doc_node = getattr(node, "doc_node", None)
+        if doc_node is None:
+            return None
+
+        value = getattr(doc_node, "value", None)
+        if not isinstance(value, str):
+            return None
+
+        return value.strip().splitlines()[0]
 
     # =====================================================
     # Module name resolution
@@ -124,20 +136,20 @@ class AstScanner(ScannerBase):
 
         import_map: Dict[str, str] = {}
 
-        for node in module.nodes_of_class(astroid.ImportFrom):
+        for node in module.nodes_of_class(nodes.ImportFrom):
             for name, alias in node.names:
                 local_name = alias or name
                 full_name = f"{node.modname}.{name}"
                 import_map[local_name] = full_name
 
-        for node in module.nodes_of_class(astroid.Import):
+        for node in module.nodes_of_class(nodes.Import):
             for name, alias in node.names:
                 local_name = alias or name.split(".")[-1]
                 import_map[local_name] = name
 
         self._module_imports[module_name] = import_map
 
-        # Add module node (canonical key = module_name)
+        # Add module node
         mid = self._add_symbol(
             parent_id=None,
             kind="module",
@@ -147,14 +159,14 @@ class AstScanner(ScannerBase):
             lineno=1,
             end_lineno=1,
             signature="",
-            doc=module.doc,
+            doc=self._get_docstring_first_line(module),
         )
 
         for node in module.body:
             self._visit_definition(node, mid, module_path)
 
     def _visit_definition(self, node, parent_id: str, module_path: str) -> None:
-        if isinstance(node, astroid.ClassDef):
+        if isinstance(node, nodes.ClassDef):
             cid = self._add_symbol(
                 parent_id=parent_id,
                 kind="class",
@@ -164,14 +176,18 @@ class AstScanner(ScannerBase):
                 lineno=node.lineno,
                 end_lineno=node.end_lineno,
                 signature="",
-                doc=node.doc,
+                doc=self._get_docstring_first_line(node),
             )
 
             for child in node.body:
                 self._visit_definition(child, cid, module_path)
 
-        elif isinstance(node, astroid.FunctionDef):
-            kind = "method" if isinstance(node.parent, astroid.ClassDef) else "function"
+        elif isinstance(node, nodes.FunctionDef):
+            kind = (
+                "method"
+                if isinstance(node.parent, nodes.ClassDef)
+                else "function"
+            )
 
             self._add_symbol(
                 parent_id=parent_id,
@@ -182,7 +198,7 @@ class AstScanner(ScannerBase):
                 lineno=node.lineno,
                 end_lineno=node.end_lineno,
                 signature=node.args.as_string(),
-                doc=node.doc,
+                doc=self._get_docstring_first_line(node),
             )
 
     # =====================================================
@@ -190,22 +206,19 @@ class AstScanner(ScannerBase):
     # =====================================================
 
     def _add_symbol(
-            self,
-            parent_id: Optional[str],
-            kind: str,
-            name: str,
-            qualified_name: str,
-            module_path: str,
-            lineno: int,
-            end_lineno: int,
-            signature: str,
-            doc: Optional[str],
+        self,
+        parent_id: Optional[str],
+        kind: str,
+        name: str,
+        qualified_name: str,
+        module_path: str,
+        lineno: int,
+        end_lineno: int,
+        signature: str,
+        doc: Optional[str],
     ) -> str:
-        doc1 = ""
-        if doc:
-            doc1 = doc.strip().splitlines()[0]
+        doc1 = doc or ""
 
-        # Canonical key = qualified_name
         sid = self._add_node([
             qualified_name,
             kind,
@@ -221,11 +234,7 @@ class AstScanner(ScannerBase):
         self._qualified_name_to_id[qualified_name] = sid
 
         if parent_id is not None:
-            self._add_edge(
-                parent_id,
-                sid,
-                "contains",
-            )
+            self._add_edge(parent_id, sid, "contains")
 
         return sid
 
@@ -236,20 +245,19 @@ class AstScanner(ScannerBase):
     def _resolve_caller_id(self, node) -> Optional[str]:
         scope = node.scope()
 
-        if isinstance(scope, astroid.FunctionDef):
+        if isinstance(scope, nodes.FunctionDef):
             qname = scope.qname()
-        elif isinstance(scope, astroid.ClassDef):
+        elif isinstance(scope, nodes.ClassDef):
             qname = scope.qname()
-        elif isinstance(scope, astroid.Module):
+        elif isinstance(scope, nodes.Module):
             qname = scope.name
         else:
             return None
 
         return self._qualified_name_to_id.get(qname)
 
-    def _resolve_references(self, module_name: str, module: astroid.Module) -> None:
+    def _resolve_references(self, module_name: str, module: nodes.Module) -> None:
         import_map = self._module_imports.get(module_name, {})
-
         module_id = self._qualified_name_to_id.get(module_name)
 
         # IMPORTS
@@ -257,7 +265,7 @@ class AstScanner(ScannerBase):
             self._maybe_link(module_id, full, "imports")
 
         # CALLS
-        for node in module.nodes_of_class(astroid.Call):
+        for node in module.nodes_of_class(nodes.Call):
             caller_id = self._resolve_caller_id(node)
             if caller_id is None:
                 continue
@@ -276,7 +284,7 @@ class AstScanner(ScannerBase):
                 continue
 
         # INHERITANCE
-        for node in module.nodes_of_class(astroid.ClassDef):
+        for node in module.nodes_of_class(nodes.ClassDef):
             child_id = self._qualified_name_to_id.get(node.qname())
             if not child_id:
                 continue
@@ -296,7 +304,7 @@ class AstScanner(ScannerBase):
                     continue
 
         # REFERENCES
-        for node in module.nodes_of_class(astroid.Name):
+        for node in module.nodes_of_class(nodes.Name):
             caller_id = self._resolve_caller_id(node)
             if caller_id is None:
                 continue
@@ -328,19 +336,13 @@ class AstScanner(ScannerBase):
     # =====================================================
 
     def _maybe_link(
-            self,
-            source_id: Optional[str],
-            qualified_name: str,
-            relation: str,
-            lineno: Optional[int] = None,
-            end_lineno: Optional[int] = None,
+        self,
+        source_id: Optional[str],
+        qualified_name: str,
+        relation: str,
+        lineno: Optional[int] = None,
+        end_lineno: Optional[int] = None,
     ) -> None:
         target_id = self._qualified_name_to_id.get(qualified_name)
         if source_id is not None and target_id is not None:
-            self._add_edge(
-                source_id,
-                target_id,
-                relation,
-                lineno,
-                end_lineno,
-            )
+            self._add_edge(source_id, target_id, relation, lineno, end_lineno)

@@ -4,7 +4,8 @@ import filescan as fscan
 
 
 def main():
-    root = Path("../src/filescan").resolve()
+    # root = Path("../src/filescan").resolve()
+    root = Path("..").resolve()
 
     ignore_file = Path("self.fscanignore")
     if not ignore_file.exists():
