@@ -12,21 +12,26 @@ def main():
         ignore_file = None
 
     # ---------------------------------------------
-    # Build using scanners directly (export CSV)
+    # Build both graphs using GraphBuilder
     # ---------------------------------------------
-    scanner = fscan.Scanner([root], ignore_file=ignore_file, output="output/filescan")
-    scanner.scan()
-    scanner.to_csv()
+    builder = fscan.GraphBuilder()
 
-    ast_scanner = fscan.AstScanner([root], ignore_file=ignore_file, output="output/filescan_ast")
-    ast_scanner.scan()
-    ast_scanner.to_csv()
+    builder.build(
+        roots=[root],
+        ignore_file=ignore_file,
+        include_filesystem=True,
+        include_ast=True,
+    )
+
+    # ---------------------------------------------
+    # Export graphs
+    # ---------------------------------------------
+    builder.export_filesystem("output/filescan")
+    builder.export_ast("output/filescan_ast")
 
     # ---------------------------------------------
     # Merge context
     # ---------------------------------------------
-    builder = fscan.GraphBuilder()
-
     builder.export_context_merged(
         "output/filescan_merged.csv",
         fs_nodes_path=Path("output/filescan_nodes.csv"),

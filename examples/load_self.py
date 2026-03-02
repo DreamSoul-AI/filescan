@@ -9,8 +9,8 @@ import filescan as fscan
 
 def print_basic_graph_info(name, graph):
     print(f"{name} graph:")
-    print("  Nodes loaded:", len(graph.nodes))
-    print("  Edges loaded:", len(graph.edges))
+    print("  Nodes loaded :", len(graph.nodes))
+    print("  Edges loaded :", len(graph.edges))
     print()
 
 
@@ -37,23 +37,27 @@ def print_sample_edges(graph, limit=5):
 # =====================================================
 
 def main():
+
     builder = fscan.GraphBuilder()
 
     # -------------------------------------------------
     # Load filesystem graph
     # -------------------------------------------------
+
+    print("=" * 80)
     print("Loading filesystem graph...")
 
     fs_nodes = Path("output/filescan_nodes.csv")
     fs_edges = Path("output/filescan_edges.csv")
 
     if not fs_nodes.exists() or not fs_edges.exists():
-        print("Filesystem graph files not found.")
+        print("❌ Filesystem graph files not found.")
+        print("Run builder.build(..., include_filesystem=True) first.")
         return
 
     builder.load(fs_nodes, fs_edges, target="filesystem")
 
-    print("Filesystem graph loaded.\n")
+    print("✅ Filesystem graph loaded.\n")
 
     print_basic_graph_info("Filesystem", builder.filesystem)
     print_sample_nodes(builder.filesystem)
@@ -62,18 +66,21 @@ def main():
     # -------------------------------------------------
     # Load AST graph
     # -------------------------------------------------
+
+    print("=" * 80)
     print("Loading AST graph...")
 
     ast_nodes = Path("output/filescan_ast_nodes.csv")
     ast_edges = Path("output/filescan_ast_edges.csv")
 
     if not ast_nodes.exists() or not ast_edges.exists():
-        print("AST graph files not found.")
+        print("❌ AST graph files not found.")
+        print("Run builder.build(..., include_ast=True) first.")
         return
 
     builder.load(ast_nodes, ast_edges, target="ast")
 
-    print("AST graph loaded.\n")
+    print("✅ AST graph loaded.\n")
 
     print_basic_graph_info("AST", builder.ast)
     print_sample_nodes(builder.ast)
@@ -84,9 +91,10 @@ def main():
     # -------------------------------------------------
 
     if builder.has_ast():
+        print("=" * 80)
         print("Semantic indexes:")
-        print("  Qualified names indexed:", len(builder.ast.by_qname))
-        print("  Files indexed:", len(builder.ast.symbols_by_file))
+        print("  Qualified names indexed :", len(builder.ast.by_qname))
+        print("  Files indexed           :", len(builder.ast.symbols_by_file))
         print()
 
 

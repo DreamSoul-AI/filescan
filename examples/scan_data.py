@@ -4,28 +4,41 @@ import filescan as fscan
 
 
 def main():
+    # -------------------------------------------------
     # Root directory to scan
-    root = Path("./data")
+    # -------------------------------------------------
+    root = Path("./data").resolve()
+    output_prefix = Path("output/data")
 
-    # Optional ignore file (CWD-based, same logic as CLI)
+    # Optional ignore file
     ignore_file = Path("data.fscanignore")
     if not ignore_file.exists():
         ignore_file = None
 
-    # Create scanner
-    # scanner = fscan.Scanner(root, ignore_file=ignore_file, output='output/data')
-    scanner = fscan.Scanner(root, output='output/data')
+    output_prefix.parent.mkdir(parents=True, exist_ok=True)
 
-    # Run scan
-    scanner.scan()
+    # -------------------------------------------------
+    # Build via GraphBuilder (filesystem only)
+    # -------------------------------------------------
+    builder = fscan.GraphBuilder()
 
-    # Export results
-    scanner.to_csv()
-    scanner.to_json()
+    builder.build(
+        roots=[root],
+        ignore_file=ignore_file,
+        include_filesystem=True,
+        include_ast=False,
+    )
+
+    # -------------------------------------------------
+    # Export
+    # -------------------------------------------------
+    builder.export_filesystem(output_prefix)
 
     print("Scan completed.")
-    print("Generated: data")
-    return
+    print("Generated:")
+    print("  ", output_prefix.with_name(output_prefix.name + "_nodes.csv"))
+    print("  ", output_prefix.with_name(output_prefix.name + "_edges.csv"))
+    print("  ", output_prefix.with_suffix(".json"))
 
 
 if __name__ == "__main__":

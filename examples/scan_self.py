@@ -5,39 +5,40 @@ import filescan as fscan
 
 def main():
     # Root directory to scan
-    # root = Path("../src/filescan")
-    root = Path("..")
+    # root = Path("..").resolve()
+    root = Path("../src/filescan")
 
-    # Optional ignore file (CWD-based, same logic as CLI)
+    # Optional ignore file
     ignore_file = Path("self.fscanignore")
     if not ignore_file.exists():
         ignore_file = None
 
-    # Create scanner
-    scanner = fscan.Scanner([root], ignore_file=ignore_file, output='output/filescan')
+    # Create graph builder
+    builder = fscan.GraphBuilder()
 
-    # Run scan
-    scanner.scan()
+    # Build both graphs
+    builder.build(
+        roots=[root],
+        ignore_file=ignore_file,
+        include_filesystem=True,
+        include_ast=True,
+    )
 
-    # Export results
-    scanner.to_csv()
-    scanner.to_json()
+    # Export filesystem graph
+    builder.export_filesystem("output/filescan")
 
-    print("Scan completed.")
-    print("Generated: filescan")
+    print("Filesystem scan completed.")
+    print("Generated: output/filescan_nodes.csv")
+    print("Generated: output/filescan_edges.csv")
+    print("Generated: output/filescan.json")
 
-    # Create AST scanner
-    ast_scanner = fscan.AstScanner([root], ignore_file=ignore_file, output="output/filescan_ast")
-    # Run scan
-    ast_scanner.scan()
-
-    # Export results
-    ast_scanner.to_csv()
-    ast_scanner.to_json()
+    # Export AST graph
+    builder.export_ast("output/filescan_ast")
 
     print("AST scan completed.")
-    print("Generated: filescan_ast")
-    return
+    print("Generated: output/filescan_ast_nodes.csv")
+    print("Generated: output/filescan_ast_edges.csv")
+    print("Generated: output/filescan_ast.json")
 
 
 if __name__ == "__main__":

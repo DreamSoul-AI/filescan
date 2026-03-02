@@ -1,44 +1,46 @@
 from pathlib import Path
-from import_src import *
 import filescan as fscan
 
 
 def main():
     # -------------------------------------------------
-    # Project root (must match AST scan root)
+    # Project root (MUST match original AST scan root)
     # -------------------------------------------------
-    # root = Path("../src/filescan").resolve()
-    root = Path("..").resolve()
+    # root = Path("..").resolve()
+    root = Path("../src/filescan")
 
     # -------------------------------------------------
-    # Load AST graph
+    # Locate exported AST graph
     # -------------------------------------------------
     nodes_csv = Path("output/filescan_ast_nodes.csv")
     edges_csv = Path("output/filescan_ast_edges.csv")
 
     if not nodes_csv.exists() or not edges_csv.exists():
-        print("AST graph files not found.")
-        print("Please run GraphBuilder.build() first.")
+        print("❌ AST graph files not found.")
+        print("Run GraphBuilder.build(...) and export_ast(...) first.")
         return
 
+    # -------------------------------------------------
+    # Load AST graph
+    # -------------------------------------------------
     builder = fscan.GraphBuilder()
     builder.load(nodes_csv, edges_csv, target="ast")
 
     if not builder.has_ast():
-        print("AST graph failed to load.")
+        print("❌ AST graph failed to load.")
         return
 
-    print("AST graph loaded.")
-    print("Symbols indexed:", len(builder.ast.by_qname))
+    print("✅ AST graph loaded.")
+    print(f"Indexed symbols: {len(builder.ast.by_qname)}")
     print()
 
     # -------------------------------------------------
-    # Create search engine (AST graph only)
+    # Create Search Engine (AST graph only)
     # -------------------------------------------------
     engine = fscan.SearchEngine(root, builder.ast)
 
     query = "_add_symbol"
-    print(f"\nSearching for: {query}\n")
+    print(f"🔎 Searching for: {query}\n")
 
     results = engine.search(query)
 
@@ -69,7 +71,9 @@ def main():
 
         print(f"Code  : {text}")
 
+        # -------------------------------------------------
         # Extract definition once per symbol
+        # -------------------------------------------------
         if sid and sid not in printed_symbols:
             printed_symbols.add(sid)
 

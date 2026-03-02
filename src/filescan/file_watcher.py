@@ -1,67 +1,62 @@
 import threading
 import time
 from pathlib import Path
-from typing import Optional, Set, Tuple, Union
+from typing import Optional, Set, Tuple, Union, List
 
 from watchfiles import watch, Change
 
-from .scanner import Scanner
-from .ast_scanner import AstScanner
+from .graph_builder import GraphBuilder
 
 PathLike = Union[str, Path]
 
 
 class FileWatcher:
     """
-    Watches a root directory and triggers:
-      - filesystem scan on add/delete events
-      - AST scan on any .py change event
+    Incremental File Watcher using persistent GraphBuilder.
 
-    Output behavior:
-
-    If `output` is provided:
-        filesystem -> <output>
-        AST        -> <output>_ast
-
-    If `output` is None:
-        filesystem -> ./output
-        AST        -> ./output_ast
+    Behavior:
+    - Filesystem graph updated only for added/deleted paths
+    - AST graph updated only for changed .py files
+    - Deleted paths removed from both graphs
+    - No full rebuild after initial build
     """
 
+    # ==========================================================
+    # Initialization
+    # ==========================================================
+
     def __init__(
-            self,
-            root: PathLike,
-            ignore_file: Optional[PathLike] = None,
-            output: Optional[PathLike] = None,
-            debounce_seconds: float = 0.5,
+        self,
+        root: PathLike,
+        ignore_file: Optional[PathLike] = None,
+        output: Optional[PathLike] = None,
+        debounce_seconds: float = 0.5,
     ) -> None:
 
         self.root = Path(root).resolve()
+        self.ignore_file = Path(ignore_file).resolve() if ignore_file else None
 
-        self.ignore_file = (
-            Path(ignore_file).resolve() if ignore_file else None
-        )
-
-        # ------------------------------
-        # Output handling (clean logic)
-        # ------------------------------
-        if output is not None:
-            base = Path(output).resolve()
-        else:
-            base = Path("output").resolve()
+        base = Path(output).resolve() if output else Path("output").resolve()
 
         self.output_fs = base
         self.output_ast = base.with_name(base.name + "_ast")
 
         self.debounce_seconds = float(debounce_seconds)
+
         self._stop_event = threading.Event()
         self._last_trigger_time = 0.0
 
-    # ---------------------------------------------------------
+        self.builder = GraphBuilder()
+
+    # ==========================================================
     # Public API
-    # ---------------------------------------------------------
+    # ==========================================================
 
     def start(self) -> None:
+        """
+        Start watching and perform initial full build.
+        """
+
         print("========================================")
         print("[watcher] Started")
         print("[watcher] Root      :", self.root)
@@ -69,7 +64,21 @@ class FileWatcher:
         print("[watcher] Output AST:", self.output_ast)
         print("========================================\n")
 
+        # Initial full build
+        self.builder.build(
+            [self.root],
+            ignore_file=self.ignore_file,
+            include_filesystem=True,
+            include_ast=True,
+        )
+
+        # Export initial state
+        self._export_all()
+
+        print("[watcher] Initial build complete\n")
+
         for changes in watch(self.root, recursive=True):
+
             if self._stop_event.is_set():
                 break
 
@@ -89,29 +98,31 @@ class FileWatcher:
     def stop(self) -> None:
         self._stop_event.set()
 
-    # ---------------------------------------------------------
-    # Trigger logic
-    # ---------------------------------------------------------
+    # ==========================================================
+    # Export Helper
+    # ==========================================================
+
+    def _export_all(self) -> None:
+        self.builder.export_filesystem(self.output_fs)
+        self.builder.export_ast(self.output_ast)
+
+    # ==========================================================
+    # Trigger Logic
+    # ==========================================================
 
     def _should_trigger_filesystem_scan(
-            self, changes: Set[Tuple[Change, str]]
+        self, changes: Set[Tuple[Change, str]]
     ) -> bool:
-        for change, _ in changes:
-            if change in (Change.added, Change.deleted):
-                return True
-        return False
+        return any(change in (Change.added, Change.deleted) for change, _ in changes)
 
     def _should_trigger_ast_scan(
-            self, changes: Set[Tuple[Change, str]]
+        self, changes: Set[Tuple[Change, str]]
     ) -> bool:
-        for _, path_str in changes:
-            if Path(path_str).suffix == ".py":
-                return True
-        return False
+        return any(Path(path).suffix == ".py" for _, path in changes)
 
-    # ---------------------------------------------------------
-    # Handling
-    # ---------------------------------------------------------
+    # ==========================================================
+    # Change Handling (Incremental)
+    # ==========================================================
 
     def _handle_changes(
             self,
@@ -124,49 +135,63 @@ class FileWatcher:
         print("[watcher] Change detected at", time.strftime("%H:%M:%S"))
         print("[watcher] Total events:", len(changes))
 
-        for change, path in changes:
+        added_or_modified: List[Path] = []
+        deleted: List[Path] = []
+
+        for change, path_str in changes:
+            path = Path(path_str).resolve()
             print("  -", change.name, ":", path)
 
-        if fs_trigger:
-            print("\n>>> Filesystem scan TRIGGERED")
-            self._run_filesystem_scan()
-            print(">>> Filesystem scan FINISHED")
+            if change == Change.deleted:
+                deleted.append(path)
+            else:
+                added_or_modified.append(path)
 
-        if ast_trigger:
-            print("\n>>> AST semantic scan TRIGGERED")
-            self._run_ast_scan()
-            print(">>> AST semantic scan FINISHED")
+        graph_changed = False
+
+        # ----------------------------------------
+        # Handle deletions
+        # ----------------------------------------
+
+        if deleted:
+            print("\n>>> Removing deleted paths")
+            self.builder.remove_paths(deleted)
+            graph_changed = True
+
+        # ----------------------------------------
+        # Filesystem partial update
+        # ----------------------------------------
+
+        if fs_trigger and added_or_modified:
+            print("\n>>> Filesystem partial update")
+            self.builder.update_filesystem_paths(
+                added_or_modified,
+                ignore_file=self.ignore_file,
+            )
+            graph_changed = True
+
+        # ----------------------------------------
+        # AST partial update
+        # ----------------------------------------
+
+        py_paths = [p for p in added_or_modified if p.suffix == ".py"]
+
+        if ast_trigger and py_paths:
+            print("\n>>> AST partial update")
+            self.builder.update_ast_paths(
+                py_paths,
+                ignore_file=self.ignore_file,
+            )
+            graph_changed = True
+
+        # ----------------------------------------
+        # Export only if changed
+        # ----------------------------------------
+
+        if graph_changed:
+            print("\n>>> Exporting updated graphs")
+            self.builder.export_filesystem(self.output_fs)
+            self.builder.export_ast(self.output_ast)
+            print(">>> Export complete")
 
         print("----------------------------------------\n")
-
-    # ---------------------------------------------------------
-    # Scan execution
-    # ---------------------------------------------------------
-
-    def _run_filesystem_scan(self) -> None:
-        start = time.time()
-
-        scanner = Scanner(
-            root=self.root,
-            ignore_file=self.ignore_file,
-            output=self.output_fs,
-        )
-        scanner.scan()
-        scanner.to_csv()
-        scanner.to_json()
-
-        print("[filesystem] Completed in %.3f seconds" % (time.time() - start))
-
-    def _run_ast_scan(self) -> None:
-        start = time.time()
-
-        ast_scanner = AstScanner(
-            root=self.root,
-            ignore_file=self.ignore_file,
-            output=self.output_ast,
-        )
-        ast_scanner.scan()
-        ast_scanner.to_csv()
-        ast_scanner.to_json()
-
-        print("[ast] Completed in %.3f seconds" % (time.time() - start))

@@ -2,12 +2,13 @@ import os
 import subprocess
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 # -------------------------------------------------
 # Sort by semantic priority
 # -------------------------------------------------
+
 PRIORITY = {
     "definition": 0,
     "inherits": 1,
@@ -27,9 +28,9 @@ class SearchEngine:
 
     def __init__(self, root: Path, ast_graph):
         """
-        ast_graph must be builder.ast (NOT GraphBuilder).
+        ast_graph must be builder.ast
         """
-        self.root = os.path.abspath(os.fspath(root))
+        self.root = Path(root).resolve()
         self.graph = ast_graph
 
     # -------------------------------------------------
@@ -37,6 +38,7 @@ class SearchEngine:
     # -------------------------------------------------
 
     def search(self, query: str) -> List[Dict[str, Any]]:
+
         matches = list(self._grep(query))
         if not matches:
             return []
@@ -47,24 +49,27 @@ class SearchEngine:
         target_ids = set(self.graph.by_name.get(query, []))
 
         for m in matches:
-            file_path = os.path.abspath(m["file"])
-            module_path = os.path.normpath(
-                os.path.relpath(file_path, self.root)
+            file_path = Path(m["file"]).resolve()
+
+            try:
+                module_path = os.path.normpath(
+                    os.path.relpath(file_path, self.root)
+                )
+            except ValueError:
+                continue
+
+            container_id = self._find_symbol_at(
+                module_path,
+                m["line"],
+            )
+
+            container = (
+                self.graph.nodes.get(container_id)
+                if container_id
+                else None
             )
 
             match_type = "unknown"
-            container_id = None
-            container = None
-
-            # -------------------------------------------------
-            # Resolve enclosing symbol
-            # -------------------------------------------------
-            if module_path:
-                container_id = self._find_symbol_at(
-                    module_path,
-                    m["line"],
-                )
-                container = self.graph.nodes.get(container_id)
 
             # -------------------------------------------------
             # 1️⃣ Definition
@@ -82,11 +87,11 @@ class SearchEngine:
             if match_type == "unknown" and container_id and target_ids:
                 for edge in self.graph.out_edges.get(container_id, []):
                     if edge["target"] in target_ids:
-                        match_type = edge["relation"]
+                        match_type = edge.get("relation", "unknown")
                         break
 
             results.append({
-                "file": file_path,
+                "file": str(file_path),
                 "line": m["line"],
                 "text": m["text"].strip(),
                 "symbol_id": container_id,
@@ -108,7 +113,8 @@ class SearchEngine:
     # Symbol Resolver
     # -------------------------------------------------
 
-    def _find_symbol_at(self, module_path: str, line: int):
+    def _find_symbol_at(self, module_path: str, line: int) -> Optional[str]:
+
         candidates = []
 
         for start, end, nid in self.graph.symbols_by_file.get(module_path, []):
@@ -125,28 +131,39 @@ class SearchEngine:
     # -------------------------------------------------
 
     def _grep(self, query: str):
+
         cmd = [
             "rg",
             "--json",
             "--line-number",
             "--with-filename",
             query,
-            self.root,
+            str(self.root),
         ]
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except FileNotFoundError:
+            raise RuntimeError(
+                "ripgrep (rg) not found. Please install it."
+            )
 
         for line in proc.stdout:
-            event = json.loads(line)
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
-            if event["type"] == "match":
+            if event.get("type") == "match":
                 yield {
                     "file": event["data"]["path"]["text"],
                     "line": event["data"]["line_number"],
                     "text": event["data"]["lines"]["text"],
                 }
+
+        proc.wait()

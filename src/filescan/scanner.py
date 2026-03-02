@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from .base import ScannerBase
 from .utils import load_ignore_spec
@@ -14,20 +14,27 @@ class Scanner(ScannerBase):
         ("size", "File size in bytes; null for directories"),
     ]
 
+    EDGE_SCHEMA = [
+        ("id", "Unique edge ID"),
+        ("source", "Source node ID"),
+        ("target", "Target node ID"),
+        ("relation", "Edge relation type"),
+    ]
+
     # -------------------------------------------------
     # Public
     # -------------------------------------------------
 
-    def scan(self) -> List[list]:
-        self.reset()
+    def scan_into(self, graph) -> None:
+        """
+        Scan filesystem and write into provided graph.
+        """
 
         if self._ignore_spec is None and self.ignore_file is not None:
             self._ignore_spec = load_ignore_spec(self.ignore_file)
 
         for root in self.root:
-            self._walk(root, root=root, parent_id=None)
-
-        return self._nodes
+            self._walk(graph, root, root=root, parent_id=None)
 
     # -------------------------------------------------
     # Canonical Identity
@@ -36,8 +43,6 @@ class Scanner(ScannerBase):
     def _canonical_key(self, path: Path, root: Path) -> str:
         """
         Logical identity of node.
-        This defines uniqueness.
-        Hashing is handled by ScannerBase.
         """
         root = root.resolve()
         path = path.resolve()
@@ -58,15 +63,13 @@ class Scanner(ScannerBase):
 
     def _walk(
         self,
+        graph,
         path: Path,
         root: Path,
         parent_id: Optional[str],
     ) -> None:
-        """
-        Recursively walk directory tree and collect nodes + edges.
-        """
 
-        # Do not ignore the root itself
+        # Ignore (except root)
         if parent_id is not None and self._is_ignored(path):
             return
 
@@ -80,25 +83,33 @@ class Scanner(ScannerBase):
             except OSError:
                 pass
 
-        # Normalize absolute path to POSIX style
         abs_path = str(path.resolve().as_posix())
 
-        # Add node (ID generated safely by base class)
-        node_id = self._add_node([
-            canonical_key,                 # used for hashing (logical identity)
-            "d" if is_dir else "f",
-            path.name,
-            abs_path,
-            size,
-        ])
+        # ---- Add node ----
+        node_payload = {
+            "type": "d" if is_dir else "f",
+            "name": path.name,
+            "abs_path": abs_path,
+            "size": size,
+        }
 
-        # Add containment edge
+        node_id = self.add_node(
+            graph,
+            canonical_key,
+            node_payload,
+        )
+
+        # ---- Add containment edge ----
         if parent_id is not None:
-            self._add_edge(
-                parent_id,
-                node_id,
-                "contains",
-            )
+            edge_key = f"{parent_id}|contains|{node_id}"
+
+            edge_payload = {
+                "source": parent_id,
+                "target": node_id,
+                "relation": "contains",
+            }
+
+            self.add_edge(graph, edge_key, edge_payload)
 
         if not is_dir:
             return
@@ -113,6 +124,7 @@ class Scanner(ScannerBase):
 
         for child in children:
             self._walk(
+                graph,
                 child,
                 root=root,
                 parent_id=node_id,
