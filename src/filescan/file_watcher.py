@@ -40,6 +40,7 @@ class FileWatcher:
 
         self.output_fs = base
         self.output_ast = base.with_name(base.name + "_ast")
+        self.output_context = base.with_name(base.name + "_context.txt")
 
         self.debounce_seconds = float(debounce_seconds)
 
@@ -103,8 +104,30 @@ class FileWatcher:
     # ==========================================================
 
     def _export_all(self) -> None:
+
+        # 1️⃣ Export filesystem
         self.builder.export_filesystem(self.output_fs)
+
+        # 2️⃣ Export AST
         self.builder.export_ast(self.output_ast)
+
+        # Build actual generated CSV paths
+        fs_nodes = self.output_fs.with_name(self.output_fs.name + "_nodes.csv")
+        fs_edges = self.output_fs.with_name(self.output_fs.name + "_edges.csv")
+
+        ast_nodes = self.output_ast.with_name(self.output_ast.name + "_nodes.csv")
+        ast_edges = self.output_ast.with_name(self.output_ast.name + "_edges.csv")
+
+        # 3️⃣ Merge everything into one context file
+        self.builder.export_context_merged(
+            self.output_context,
+            fs_nodes_path=fs_nodes,
+            fs_edges_path=fs_edges,
+            ast_nodes_path=ast_nodes,
+            ast_edges_path=ast_edges,
+        )
+
+        print("[watcher] Exported merged context ->", self.output_context)
 
     # ==========================================================
     # Trigger Logic
@@ -190,8 +213,7 @@ class FileWatcher:
 
         if graph_changed:
             print("\n>>> Exporting updated graphs")
-            self.builder.export_filesystem(self.output_fs)
-            self.builder.export_ast(self.output_ast)
+            self._export_all()
             print(">>> Export complete")
 
         print("----------------------------------------\n")
