@@ -31,7 +31,7 @@ class AstScanner(ScannerBase):
         ("id", "Unique edge ID"),
         ("source", "Source node ID"),
         ("target", "Target node ID"),
-        ("relation", "contains | imports | calls | inherits | references"),
+        ("relation", "contains | imports | calls | creates | inherits | references"),
         ("lineno", "Line number where relation occurs"),
         ("end_lineno", "End line number where relation occurs"),
     ]
@@ -276,23 +276,34 @@ class AstScanner(ScannerBase):
         for _local, full in import_map.items():
             self._maybe_link(graph, module_id, full, "imports", None, None)
 
-        # CALLS
+        # CALLS / CONSTRUCTORS
         for node in module.nodes_of_class(nodes.Call):
+
             caller_id = self._resolve_caller_id(node)
             if caller_id is None:
                 continue
 
             try:
                 for inferred in node.func.infer():
-                    if hasattr(inferred, "qname"):
-                        self._maybe_link(
-                            graph,
-                            caller_id,
-                            inferred.qname(),
-                            "calls",
-                            node.lineno,
-                            getattr(node, "end_lineno", node.lineno),
-                        )
+
+                    if not hasattr(inferred, "qname"):
+                        continue
+
+                    relation = "calls"
+
+                    # detect constructor call (class instantiation)
+                    if isinstance(inferred, nodes.ClassDef):
+                        relation = "creates"
+
+                    self._maybe_link(
+                        graph,
+                        caller_id,
+                        inferred.qname(),
+                        relation,
+                        node.lineno,
+                        getattr(node, "end_lineno", node.lineno),
+                    )
+
             except Exception:
                 continue
 
@@ -352,6 +363,29 @@ class AstScanner(ScannerBase):
                         "end_lineno": node.lineno,
                     },
                 )
+
+        # TYPE ANNOTATIONS
+        for node in module.nodes_of_class(nodes.AnnAssign):
+
+            caller_id = self._resolve_caller_id(node)
+            if caller_id is None:
+                continue
+
+            ann = node.annotation
+
+            try:
+                for inferred in ann.infer():
+                    if hasattr(inferred, "qname"):
+                        self._maybe_link(
+                            graph,
+                            caller_id,
+                            inferred.qname(),
+                            "references",
+                            node.lineno,
+                            node.lineno,
+                        )
+            except Exception:
+                continue
 
     # =====================================================
     # Edge helper
