@@ -1,3 +1,5 @@
+import types
+
 from filescan.scanner import Scanner
 
 
@@ -13,9 +15,10 @@ def test_scanner_builds_basic_tree(tmp_path):
     (sub / "c.txt").write_text("!")
 
     scanner = Scanner(root)
-    nodes = scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
-    names = {row[2] for row in nodes}  # name column
+    names = {node["name"] for node in graph.nodes.values()}
 
     assert "a.txt" in names
     assert "b.txt" in names
@@ -34,20 +37,21 @@ def test_scanner_creates_correct_number_of_nodes_and_edges(tmp_path):
     (sub / "b.txt").write_text("y")
 
     scanner = Scanner(root)
-    scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
     # Expected nodes:
     # root directory
     # a.txt
     # sub directory
     # b.txt
-    assert len(scanner._nodes) == 4
+    assert len(graph.nodes) == 4
 
     # Expected edges:
     # root -> a.txt
     # root -> sub
     # sub -> b.txt
-    assert len(scanner._edges) == 3
+    assert len(graph.edges) == 3
 
 
 def test_scanner_respects_ignore_file(tmp_path):
@@ -61,9 +65,10 @@ def test_scanner_respects_ignore_file(tmp_path):
     (root / "ignore.log").write_text("no")
 
     scanner = Scanner(root, ignore_file=ignore_file)
-    nodes = scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
-    names = {row[2] for row in nodes}
+    names = {node["name"] for node in graph.nodes.values()}
 
     assert "keep.txt" in names
     assert "ignore.log" not in names

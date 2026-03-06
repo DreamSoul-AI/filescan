@@ -1,3 +1,5 @@
+import types
+
 from filescan.ast_scanner import AstScanner
 
 
@@ -16,10 +18,11 @@ def test_ast_detects_module_and_function(tmp_path):
     )
 
     scanner = AstScanner(root)
-    nodes = scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
-    kinds = {row[1] for row in nodes}
-    names = {row[2] for row in nodes}
+    kinds = {node["kind"] for node in graph.nodes.values()}
+    names = {node["name"] for node in graph.nodes.values()}
 
     assert "module" in kinds
     assert "function" in kinds
@@ -42,10 +45,11 @@ def test_ast_detects_class_and_method(tmp_path):
     )
 
     scanner = AstScanner(root)
-    nodes = scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
-    kinds = {row[1] for row in nodes}
-    names = {row[2] for row in nodes}
+    kinds = {node["kind"] for node in graph.nodes.values()}
+    names = {node["name"] for node in graph.nodes.values()}
 
     assert "class" in kinds
     assert "method" in kinds
@@ -71,12 +75,11 @@ def test_ast_detects_function_call(tmp_path):
     )
 
     scanner = AstScanner(root)
-    scanner.scan()
-
-    edges = scanner._edges
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
     # Check that at least one "calls" relation exists
-    assert any(edge[3] == "calls" for edge in edges)
+    assert any(edge["relation"] == "calls" for edge in graph.edges)
 
 
 # -------------------------------------------------
@@ -97,11 +100,10 @@ def test_ast_detects_inheritance(tmp_path):
     )
 
     scanner = AstScanner(root)
-    scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
-    edges = scanner._edges
-
-    assert any(edge[3] == "inherits" for edge in edges)
+    assert any(edge["relation"] == "inherits" for edge in graph.edges)
 
 
 # -------------------------------------------------
@@ -119,9 +121,10 @@ def test_ast_qualified_name(tmp_path):
     )
 
     scanner = AstScanner(root)
-    nodes = scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
-    qualified_names = {row[3] for row in nodes}
+    qualified_names = {node["qualified_name"] for node in graph.nodes.values()}
 
     # Should include something like proj.a.hello
     assert any("hello" in q for q in qualified_names)
@@ -143,16 +146,20 @@ def test_ast_line_numbers(tmp_path):
     )
 
     scanner = AstScanner(root)
-    nodes = scanner.scan()
+    graph = types.SimpleNamespace(nodes={}, edges=[], edge_ids=set())
+    scanner.scan_into(graph)
 
     # Find hello node
-    hello_nodes = [row for row in nodes if row[2] == "hello"]
+    hello_nodes = [
+        node for node in graph.nodes.values()
+        if node.get("name") == "hello"
+    ]
     assert len(hello_nodes) == 1
 
     hello = hello_nodes[0]
 
-    lineno = hello[5]
-    end_lineno = hello[6]
+    lineno = hello["lineno"]
+    end_lineno = hello["end_lineno"]
 
     assert lineno == 2
     assert end_lineno >= lineno

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from filescan.graph_builder import GraphBuilder
+from filescan.search_engine import SearchEngine
 
 
 # =====================================================
@@ -73,7 +74,7 @@ def test_adjacency_consistency(tmp_path):
 # FIND SYMBOL AT LINE
 # =====================================================
 
-def test_find_symbol_at(tmp_path):
+def test_symbol_index_supports_find_symbol_at(tmp_path):
     root = tmp_path / "proj"
     root.mkdir()
 
@@ -86,7 +87,8 @@ def test_find_symbol_at(tmp_path):
     builder = GraphBuilder()
     builder.build([root], include_ast=True)
 
-    node_id = builder.find_symbol_at("a.py", 2)
+    engine = SearchEngine(root, builder.ast)
+    node_id = engine._find_symbol_at("a.py", 2)
 
     assert node_id is not None
     node = builder.ast.nodes[node_id]
@@ -97,7 +99,7 @@ def test_find_symbol_at(tmp_path):
 # EXTRACT NODE SOURCE (REALISTIC GUARANTEE)
 # =====================================================
 
-def test_extract_node_source(tmp_path):
+def test_ast_symbols_by_file_index_contains_ranges(tmp_path):
     root = tmp_path / "proj"
     root.mkdir()
 
@@ -110,11 +112,19 @@ def test_extract_node_source(tmp_path):
     builder = GraphBuilder()
     builder.build([root], include_ast=True)
 
-    node_id = builder.find_symbol_at("a.py", 1)
-    source = builder.extract_node_source(root, node_id)
+    entries = builder.ast.symbols_by_file.get("a.py", [])
+    assert entries
 
-    assert source is not None
-    assert source.startswith("def foo()")
+    foo_entries = []
+    for start, end, nid in entries:
+        node = builder.ast.nodes[nid]
+        if node.get("name") == "foo":
+            foo_entries.append((start, end))
+
+    assert foo_entries
+    start, end = foo_entries[0]
+    assert start == 1
+    assert end >= start
 
 
 # =====================================================
@@ -162,3 +172,36 @@ def test_graph_is_deterministic(tmp_path):
 
     assert b1.ast.nodes == b2.ast.nodes
     assert b1.ast.edges == b2.ast.edges
+
+
+def test_export_ast_mermaid_from_graph(tmp_path):
+    root = tmp_path / "proj"
+    root.mkdir()
+
+    (root / "a.py").write_text(
+        "class B:\n"
+        "    def ping(self):\n"
+        "        return 1\n"
+        "\n"
+        "class A:\n"
+        "    def _hidden(self):\n"
+        "        return 0\n"
+        "\n"
+        "    def run(self):\n"
+        "        b = B()\n"
+        "        return b.ping()\n",
+        encoding="utf-8",
+    )
+
+    builder = GraphBuilder().build([root], include_ast=True)
+    output = builder.export_ast_mermaid(tmp_path / "output" / "filescan_uml.md")
+
+    assert output.exists()
+    content = output.read_text(encoding="utf-8")
+    assert "```mermaid" in content
+    assert "classDiagram" in content
+    assert "class A {" in content
+    assert "class B {" in content
+    assert "+run()" in content
+    assert "_hidden" not in content
+    assert "A --> B" in content

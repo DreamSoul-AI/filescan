@@ -1,6 +1,7 @@
 import os
 import csv
 import json
+import re
 from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
@@ -190,6 +191,162 @@ class GraphBuilder:
                     content = f.read().strip()
                     out.write(content)
                     out.write("\n\n")
+
+    def export_ast_mermaid(
+            self,
+            output_path: Union[str, Path],
+            *,
+            show_private: bool = False,
+            module_path_filter: Optional[str] = None,
+            title: str = "AST UML",
+    ) -> Path:
+        output_path = Path(output_path)
+
+        nodes: Dict[str, dict] = {}
+        for nid, node in self.ast.nodes.items():
+            if module_path_filter:
+                module_path = node.get("module_path", "")
+                if module_path_filter not in Path(module_path).as_posix():
+                    continue
+
+            nodes[nid] = {
+                "kind": node.get("kind", ""),
+                "name": node.get("name", ""),
+                "qname": node.get("qualified_name", ""),
+                "signature": node.get("signature", ""),
+            }
+
+        edges: List[Tuple[str, str, str]] = []
+        for edge in self.ast.edges:
+            src = edge.get("source")
+            tgt = edge.get("target")
+            rel = edge.get("relation")
+            if not src or not tgt or not rel:
+                continue
+            if src not in nodes or tgt not in nodes:
+                continue
+            edges.append((src, tgt, rel))
+
+        uml = self._ast_to_mermaid(nodes, edges, show_private=show_private)
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8") as f:
+            f.write(f"# {title}\n\n")
+            f.write(uml)
+            f.write("\n")
+
+        return output_path
+
+    @staticmethod
+    def _safe_mermaid_name(name: str) -> str:
+        return re.sub(r"[^0-9A-Za-z_]", "_", name)
+
+    @staticmethod
+    def _simplify_signature(signature: str) -> str:
+        if not signature:
+            return ""
+
+        signature = re.sub(r"\[[^\]]*\]", "", signature)
+        signature = re.sub(r"->.*", "", signature)
+
+        params: List[str] = []
+        for part in signature.split(","):
+            part = part.strip()
+            if not part:
+                continue
+
+            part = re.sub(r":.*", "", part)
+            part = re.sub(r"=.*", "", part).strip()
+            if (
+                    part
+                    and part != "self"
+                    and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", part)
+            ):
+                params.append(part)
+
+        return ", ".join(params)
+
+    @staticmethod
+    def _find_enclosing_class(
+            nid: Optional[str],
+            parent: Dict[str, str],
+            nodes: Dict[str, dict],
+    ) -> Optional[str]:
+        while nid:
+            if nodes.get(nid, {}).get("kind") == "class":
+                return nid
+            nid = parent.get(nid)
+        return None
+
+    def _ast_to_mermaid(
+            self,
+            nodes: Dict[str, dict],
+            edges: List[Tuple[str, str, str]],
+            *,
+            show_private: bool = False,
+    ) -> str:
+        parent: Dict[str, str] = {}
+        for src, tgt, rel in edges:
+            if rel == "contains":
+                parent[tgt] = src
+
+        classes: Dict[str, str] = {}
+        methods: Dict[str, List[str]] = {}
+        method_sig: Dict[str, str] = {}
+
+        for nid, info in nodes.items():
+            if info["kind"] == "class":
+                classes[nid] = info["name"]
+            elif info["kind"] == "method":
+                method_sig[nid] = info.get("signature", "")
+                class_id = parent.get(nid)
+                if class_id:
+                    methods.setdefault(class_id, []).append(nid)
+
+        lines = ["```mermaid", "classDiagram"]
+        for class_id, class_name in sorted(classes.items(), key=lambda kv: kv[1]):
+            lines.append(f"class {self._safe_mermaid_name(class_name)} {{")
+            for method_id in sorted(methods.get(class_id, []), key=lambda x: nodes[x]["name"]):
+                method_name = nodes[method_id]["name"]
+                if not show_private and method_name.startswith("_"):
+                    continue
+
+                sig = self._simplify_signature(method_sig.get(method_id, ""))
+                if sig:
+                    lines.append(f"    +{method_name}({sig})")
+                else:
+                    lines.append(f"    +{method_name}()")
+            lines.append("}")
+
+        inheritance = set()
+        for src, tgt, rel in edges:
+            if rel == "inherits" and src in classes and tgt in classes:
+                lines.append(f"{self._safe_mermaid_name(classes[tgt])} <|-- {self._safe_mermaid_name(classes[src])}")
+                inheritance.add((src, tgt))
+
+        seen = set()
+        for src, tgt, rel in edges:
+            if rel not in ("calls", "references", "imports", "creates"):
+                continue
+
+            class_src = self._find_enclosing_class(src, parent, nodes)
+            class_tgt = self._find_enclosing_class(tgt, parent, nodes)
+            if not class_src or not class_tgt:
+                continue
+            if class_src == class_tgt:
+                continue
+            if class_src not in classes or class_tgt not in classes:
+                continue
+            if (class_src, class_tgt) in inheritance or (class_tgt, class_src) in inheritance:
+                continue
+
+            pair = (class_src, class_tgt)
+            if pair not in seen:
+                lines.append(f"{self._safe_mermaid_name(classes[class_src])} --> {self._safe_mermaid_name(classes[class_tgt])}")
+                seen.add(pair)
+
+        lines.append("```")
+        return "\n".join(lines)
 
     # =====================================================
     # LOAD
