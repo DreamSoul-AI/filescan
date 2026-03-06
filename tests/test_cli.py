@@ -8,6 +8,7 @@ from filescan.commands.cli import (
     cmd_watch,
     cmd_search,
     cmd_context,
+    cmd_uml,
 )
 
 
@@ -63,6 +64,24 @@ class DummyBuilder:
         self.ast.by_name = {"foo": ["123"]}
         self.ast.symbols_by_file = {}
         self._has_ast = True
+        self.calls = []
+
+    def build(self, roots, ignore_file=None, **kwargs):
+        self.calls.append(("build", roots, ignore_file, kwargs))
+        return self
+
+    def export_filesystem(self, output_prefix):
+        self.calls.append(("export_filesystem", output_prefix))
+
+    def export_ast(self, output_prefix):
+        self.calls.append(("export_ast", output_prefix))
+
+    def export_ast_mermaid(self, output_path, **kwargs):
+        self.calls.append(("export_ast_mermaid", output_path, kwargs))
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# AST UML\n")
+        return out
 
     def load(self, *args, **kwargs):
         return self
@@ -90,13 +109,15 @@ def test_cmd_scan(monkeypatch, tmp_path):
         ast_only=False,
         output="graph",
         output_ast=None,
-        format="csv",
     )
 
-    monkeypatch.setattr("filescan.commands.cli.Scanner", DummyScanner)
-    monkeypatch.setattr("filescan.commands.cli.AstScanner", DummyScanner)
+    dummy = DummyBuilder()
+    monkeypatch.setattr("filescan.commands.cli.GraphBuilder", lambda: dummy)
 
     cmd_scan(args)
+
+    assert any(c[0] == "build" for c in dummy.calls)
+    assert any(c[0] == "export_filesystem" for c in dummy.calls)
 
 
 # =====================================================
@@ -113,8 +134,6 @@ def test_cmd_watch(monkeypatch, tmp_path):
         debounce=0.1,
     )
 
-    monkeypatch.setattr("filescan.commands.cli.Scanner", DummyScanner)
-    monkeypatch.setattr("filescan.commands.cli.AstScanner", DummyScanner)
     monkeypatch.setattr("filescan.commands.cli.FileWatcher", DummyWatcher)
 
     # Should not crash (KeyboardInterrupt handled)
@@ -178,3 +197,34 @@ def test_cmd_context(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Wrote context to" in captured.out
     assert out.exists()
+
+
+def test_cmd_uml(monkeypatch, tmp_path, capsys):
+    root = tmp_path
+    out = tmp_path / "diagram.md"
+
+    args = types.SimpleNamespace(
+        root=str(root),
+        ignore_file=None,
+        output=str(out),
+        show_private=True,
+        module_path_filter="src/app",
+        title="Project UML",
+    )
+
+    dummy = DummyBuilder()
+    monkeypatch.setattr("filescan.commands.cli.GraphBuilder", lambda: dummy)
+
+    cmd_uml(args)
+
+    assert any(c[0] == "build" for c in dummy.calls)
+    uml_calls = [c for c in dummy.calls if c[0] == "export_ast_mermaid"]
+    assert len(uml_calls) == 1
+    _, output_path, kwargs = uml_calls[0]
+    assert output_path == str(out)
+    assert kwargs["show_private"] is True
+    assert kwargs["module_path_filter"] == "src/app"
+    assert kwargs["title"] == "Project UML"
+
+    captured = capsys.readouterr()
+    assert "Wrote Mermaid UML to" in captured.out

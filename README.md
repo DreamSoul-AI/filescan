@@ -69,7 +69,7 @@ edges.csv     (id, source, target, relation, ...)
 
 - Multi-root scanning support
 - Unified programmatic API
-- CLI with multiple commands (`scan`, `watch`, `search`)
+- CLI with multiple commands (`scan`, `watch`, `search`, `context`, `uml`)
 - File watcher with auto-rescan
 - Hybrid text + semantic search
 - Built-in ignore rules (Python-aware defaults)
@@ -102,16 +102,13 @@ pip install -e .
 
 ```bash
 # Scan filesystem structure
-filescan ./src
+filescan scan ./src
 
 # Include Python AST analysis
-filescan ./src --ast
-
-# Export as JSON instead of CSV
-filescan ./src --ast --format json
+filescan scan ./src --ast
 
 # Custom output location
-filescan ./src --ast -o results/myproject
+filescan scan ./src --ast -o results/myproject
 ```
 
 **Output:**
@@ -128,7 +125,7 @@ results/
 ### CLI: Watch Mode (Auto-Rescan)
 
 ```bash
-filescan watch ./src --ast --debounce 0.5
+filescan watch ./src --debounce 0.5
 ```
 
 Re-scans automatically when `.py` files change. Useful during development.
@@ -143,42 +140,38 @@ filescan search ./src "MyClass" \
 
 Finds all references to `MyClass` in the codebase with semantic context.
 
+### CLI: Export Mermaid UML
+
+```bash
+filescan uml ./src -o results/uml.md
+```
+
 ---
 
 ## Library Usage
 ## Filesystem Scanner
 
 ```python
-from filescan import Scanner
+from filescan import GraphBuilder
 
-# Create scanner for directory
-scanner = Scanner(root="./data")
-
-# Scan into a graph builder
 builder = GraphBuilder()
-builder.build(roots=["./data"])
+builder.build(roots=["./data"], include_filesystem=True, include_ast=False)
 builder.export_filesystem("output/fs")
 
-# Access data
-nodes = scanner.scan()
-print(f"Found {len(nodes)} nodes")
+print(f"Found {len(builder.filesystem.nodes)} filesystem nodes")
 ```
 
 ## Python AST Scanner
 
 ```python
-from filescan import AstScanner, GraphBuilder
-
-# Create AST scanner  
-scanner = AstScanner(
-    root="./src",
-    ignore_file=".fscanignore"
-)
+from filescan import GraphBuilder
 
 # Build and export
 builder = GraphBuilder()
-builder.build(roots=["./src"], include_ast=True, ignore_file=".fscanignore")
+builder.build(roots=["./src"], include_filesystem=False, include_ast=True, ignore_file=".fscanignore")
 builder.export_ast("output/ast")
+
+print(f"Indexed symbols: {len(builder.ast.by_qname)}")
 ```
 
 ## Advanced: GraphBuilder
@@ -385,7 +378,6 @@ filescan scan <ROOT> [OPTIONS]
 - `--ast-only` — Skip filesystem, only scan AST
 - `-o, --output PREFIX` — Output file prefix (default: `graph`)
 - `--output-ast PREFIX` — Separate prefix for AST output
-- `--format {csv,json}` — Export format (default: `csv`)
 
 **Examples:**
 
@@ -395,9 +387,6 @@ filescan scan ./src -o results/fs
 
 # Both filesystem and AST
 filescan scan ./src --ast -o results/project
-
-# AST only, JSON format
-filescan scan ./src --ast-only --format json -o results/ast
 
 # Custom ignore file
 filescan scan ./src --ast --ignore-file .scanignore -o results/custom
@@ -422,7 +411,7 @@ filescan watch <ROOT> [OPTIONS]
 
 ```bash
 # Watch for changes, rescan every 0.5 seconds
-filescan watch ./src --ast -o results/live --debounce 0.5
+filescan watch ./src -o results/live --debounce 0.5
 ```
 
 Press `Ctrl+C` to stop watching.
@@ -457,6 +446,28 @@ Shows all occurrences with semantic context:
 - File path and line number
 - Source code context
 - Definition source (if available)
+
+### `filescan uml`
+
+Build AST graph and export a Mermaid class diagram markdown file.
+
+```bash
+filescan uml <ROOT> [OPTIONS]
+```
+
+**Options:**
+
+- `--ignore-file FILE` 鈥?Use custom ignore file
+- `-o, --output FILE` 鈥?Output markdown path (default: `graph_uml.md`)
+- `--show-private` 鈥?Include private methods in class diagrams
+- `--module-path-filter TEXT` 鈥?Include only nodes whose `module_path` contains `TEXT`
+- `--title TEXT` 鈥?Markdown title (default: `AST UML`)
+
+**Example:**
+
+```bash
+filescan uml ./src -o results/uml.md --module-path-filter "core/"
+```
 
 ---
 

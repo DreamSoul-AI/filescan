@@ -1,8 +1,6 @@
 import argparse
 from pathlib import Path
 
-from ..scanner import Scanner
-from ..ast_scanner import AstScanner
 from ..graph_builder import GraphBuilder
 from ..search_engine import SearchEngine
 from ..file_watcher import FileWatcher
@@ -30,27 +28,22 @@ def cmd_scan(args):
     root = Path(args.root).expanduser().resolve()
     ignore_file = resolve_ignore_file(root, args.ignore_file)
 
-    # Filesystem scan
-    if not args.ast_only:
-        fs = Scanner(root, ignore_file=ignore_file, output=args.output)
-        fs.scan()
-        if args.format == "csv":
-            fs.to_csv()
-        else:
-            fs.to_json()
+    include_filesystem = not args.ast_only
+    include_ast = bool(args.ast or args.ast_only)
 
-    # AST scan
-    if args.ast or args.ast_only:
-        ast = AstScanner(
-            root,
-            ignore_file=ignore_file,
-            output=args.output_ast or args.output,
-        )
-        ast.scan()
-        if args.format == "csv":
-            ast.to_csv()
-        else:
-            ast.to_json()
+    builder = GraphBuilder()
+    builder.build(
+        [root],
+        ignore_file=ignore_file,
+        include_filesystem=include_filesystem,
+        include_ast=include_ast,
+    )
+
+    if include_filesystem:
+        builder.export_filesystem(args.output)
+
+    if include_ast:
+        builder.export_ast(args.output_ast or args.output)
 
 
 # =====================================================
@@ -61,36 +54,15 @@ def cmd_watch(args):
     root = Path(args.root).expanduser().resolve()
     ignore_file = resolve_ignore_file(root, args.ignore_file)
 
-    print("=" * 60)
-    print("Watching project:", root)
-    print("=" * 60)
-
-    print("\nRunning initial scan...\n")
-
-    fs = Scanner(root, ignore_file=ignore_file, output=args.output)
-    fs.scan()
-    fs.to_csv()
-    fs.to_json()
-
-    ast = AstScanner(
-        root,
-        ignore_file=ignore_file,
-        output=args.output_ast or args.output,
-    )
-    ast.scan()
-    ast.to_csv()
-    ast.to_json()
-
-    print("\nInitial scan complete.")
-    print("Modify any .py file to trigger re-scan.")
-    print("Press Ctrl+C to stop.\n")
-
     watcher = FileWatcher(
         root=root,
         ignore_file=ignore_file,
         output=args.output,
         debounce_seconds=args.debounce,
     )
+
+    if args.output_ast:
+        watcher.output_ast = Path(args.output_ast).expanduser().resolve()
 
     try:
         watcher.start()
@@ -201,6 +173,32 @@ def cmd_context(args):
 
 
 # =====================================================
+# UML Command
+# =====================================================
+
+def cmd_uml(args):
+    root = Path(args.root).expanduser().resolve()
+    ignore_file = resolve_ignore_file(root, args.ignore_file)
+
+    builder = GraphBuilder()
+    builder.build(
+        [root],
+        ignore_file=ignore_file,
+        include_filesystem=False,
+        include_ast=True,
+    )
+
+    output = builder.export_ast_mermaid(
+        args.output,
+        show_private=args.show_private,
+        module_path_filter=args.module_path_filter,
+        title=args.title,
+    )
+
+    print(f"Wrote Mermaid UML to: {output}")
+
+
+# =====================================================
 # CLI
 # =====================================================
 
@@ -218,7 +216,6 @@ def main():
     scan.add_argument("--ast-only", action="store_true", help="Only run AST scan")
     scan.add_argument("-o", "--output", default="graph")
     scan.add_argument("--output-ast", help="Separate output prefix for AST scan")
-    scan.add_argument("--format", choices=["csv", "json"], default="csv")
     scan.set_defaults(func=cmd_scan)
 
     # ----------------------
@@ -255,6 +252,34 @@ def main():
     context.add_argument("--ast-edges")
     context.add_argument("-o", "--output", required=True)
     context.set_defaults(func=cmd_context)
+
+    # ----------------------
+    # uml
+    # ----------------------
+    uml = sub.add_parser("uml", help="Export Mermaid class diagram from AST graph")
+    uml.add_argument("root", help="Root directory to scan")
+    uml.add_argument("--ignore-file")
+    uml.add_argument(
+        "-o",
+        "--output",
+        default="graph_uml.md",
+        help="Path to output markdown file",
+    )
+    uml.add_argument(
+        "--show-private",
+        action="store_true",
+        help="Include private methods in class diagrams",
+    )
+    uml.add_argument(
+        "--module-path-filter",
+        help="Only include AST nodes whose module_path contains this text",
+    )
+    uml.add_argument(
+        "--title",
+        default="AST UML",
+        help="Markdown title",
+    )
+    uml.set_defaults(func=cmd_uml)
 
     args = parser.parse_args()
     args.func(args)

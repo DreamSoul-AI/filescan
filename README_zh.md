@@ -107,25 +107,24 @@ pip install -e .
 扫描当前目录：
 
 ```bash
-filescan
+filescan scan .
 ```
 
 扫描指定目录：
 
 ```bash
-filescan ./data
+filescan scan ./data
 ```
 
 导出为 JSON：
 
 ```bash
-filescan ./data --format json
 ```
 
 指定输出路径：
 
 ```bash
-filescan ./data -o out/tree
+filescan scan ./data -o out/tree
 ```
 
 输出结果：
@@ -143,19 +142,24 @@ out/
 扫描 Python 源码：
 
 ```bash
-filescan ./src --ast
+filescan scan ./src --ast
 ```
 
 导出为 JSON：
 
 ```bash
-filescan ./src --ast --format json
 ```
 
 指定输出路径：
 
 ```bash
-filescan ./src --ast -o out/symbols
+filescan scan ./src --ast -o out/symbols
+```
+
+Mermaid UML 导出：
+
+```bash
+filescan uml ./src -o out/uml.md
 ```
 
 输出结果：
@@ -263,12 +267,11 @@ CSV 文件中包含 schema 元数据注释。
 ## 文件系统扫描
 
 ```python
-from filescan import Scanner
+from filescan import GraphBuilder
 
-scanner = Scanner(root="data")
-scanner.scan()
-scanner.to_csv()
-scanner.to_json()
+builder = GraphBuilder()
+builder.build(roots=["data"], include_filesystem=True, include_ast=False)
+builder.export_filesystem("out/tree")
 ```
 
 ---
@@ -276,17 +279,16 @@ scanner.to_json()
 ## Python AST 扫描
 
 ```python
-from filescan import AstScanner
+from filescan import GraphBuilder
 
-scanner = AstScanner(
-    root="src",
+builder = GraphBuilder()
+builder.build(
+    roots=["src"],
+    include_filesystem=False,
+    include_ast=True,
     ignore_file=".fscanignore",
-    output="out/symbols",
 )
-
-scanner.scan()
-scanner.to_csv()
-scanner.to_json()
+builder.export_ast("out/symbols")
 ```
 
 ---
@@ -294,10 +296,16 @@ scanner.to_json()
 ## 程序化访问
 
 ```python
-nodes = scanner.scan()
+from filescan import GraphBuilder
 
-print(len(nodes))
-print(nodes[0])
+builder = GraphBuilder().build(
+    roots=["src"],
+    include_filesystem=True,
+    include_ast=True,
+)
+
+print(len(builder.filesystem.nodes))
+print(len(builder.ast.nodes))
 ```
 
 ---
