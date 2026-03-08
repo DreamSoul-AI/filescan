@@ -20,6 +20,13 @@ def resolve_ignore_file(root: Path, ignore_arg: str | None):
     return candidate if candidate.exists() else None
 
 
+def resolve_output_prefix(root: Path, output_arg: str | None) -> str:
+    if output_arg:
+        return output_arg
+    # Use scan root folder name by default; for filesystem roots fallback to graph.
+    return root.name or "graph"
+
+
 # =====================================================
 # Scan Command
 # =====================================================
@@ -27,6 +34,7 @@ def resolve_ignore_file(root: Path, ignore_arg: str | None):
 def cmd_scan(args):
     root = Path(args.root).expanduser().resolve()
     ignore_file = resolve_ignore_file(root, args.ignore_file)
+    output_prefix = resolve_output_prefix(root, args.output)
 
     include_filesystem = not args.ast_only
     include_ast = bool(args.ast or args.ast_only)
@@ -40,10 +48,10 @@ def cmd_scan(args):
     )
 
     if include_filesystem:
-        builder.export_filesystem(args.output)
+        builder.export_filesystem(output_prefix)
 
     if include_ast:
-        builder.export_ast(args.output_ast or args.output)
+        builder.export_ast(args.output_ast or output_prefix)
 
 
 # =====================================================
@@ -53,11 +61,12 @@ def cmd_scan(args):
 def cmd_watch(args):
     root = Path(args.root).expanduser().resolve()
     ignore_file = resolve_ignore_file(root, args.ignore_file)
+    output_prefix = resolve_output_prefix(root, args.output)
 
     watcher = FileWatcher(
         root=root,
         ignore_file=ignore_file,
-        output=args.output,
+        output=output_prefix,
         debounce_seconds=args.debounce,
     )
 
@@ -203,18 +212,18 @@ def cmd_uml(args):
 # =====================================================
 
 def main():
-    parser = argparse.ArgumentParser(prog="fscan")
+    parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
 
     # ----------------------
     # scan
     # ----------------------
     scan = sub.add_parser("scan", help="Run filesystem and/or AST scan")
-    scan.add_argument("root", help="Root directory to scan")
+    scan.add_argument("root", nargs="?", default=".", help="Root directory to scan")
     scan.add_argument("--ignore-file")
     scan.add_argument("--ast", action="store_true", help="Include AST scan")
     scan.add_argument("--ast-only", action="store_true", help="Only run AST scan")
-    scan.add_argument("-o", "--output", default="graph")
+    scan.add_argument("-o", "--output", default=None)
     scan.add_argument("--output-ast", help="Separate output prefix for AST scan")
     scan.set_defaults(func=cmd_scan)
 
@@ -224,7 +233,7 @@ def main():
     watch = sub.add_parser("watch", help="Watch project and auto-rescan")
     watch.add_argument("root", help="Root directory to watch")
     watch.add_argument("--ignore-file")
-    watch.add_argument("-o", "--output", default="graph")
+    watch.add_argument("-o", "--output", default=None)
     watch.add_argument("--output-ast")
     watch.add_argument("--debounce", type=float, default=0.5)
     watch.set_defaults(func=cmd_watch)

@@ -9,6 +9,7 @@ from filescan.commands.cli import (
     cmd_search,
     cmd_context,
     cmd_uml,
+    main,
 )
 
 
@@ -118,6 +119,41 @@ def test_cmd_scan(monkeypatch, tmp_path):
 
     assert any(c[0] == "build" for c in dummy.calls)
     assert any(c[0] == "export_filesystem" for c in dummy.calls)
+
+
+def test_cmd_scan_default_output_uses_root_name(monkeypatch, tmp_path):
+    root = tmp_path
+    args = types.SimpleNamespace(
+        root=str(root),
+        ignore_file=None,
+        ast=False,
+        ast_only=False,
+        output=None,
+        output_ast=None,
+    )
+
+    dummy = DummyBuilder()
+    monkeypatch.setattr("filescan.commands.cli.GraphBuilder", lambda: dummy)
+
+    cmd_scan(args)
+
+    fs_calls = [c for c in dummy.calls if c[0] == "export_filesystem"]
+    assert len(fs_calls) == 1
+    assert fs_calls[0][1] == root.name
+
+
+def test_main_scan_defaults_root_to_current_dir(monkeypatch):
+    called = {}
+
+    def fake_cmd_scan(args):
+        called["root"] = args.root
+
+    monkeypatch.setattr("filescan.commands.cli.cmd_scan", fake_cmd_scan)
+    monkeypatch.setattr("sys.argv", ["filescan", "scan"])
+
+    main()
+
+    assert called["root"] == "."
 
 
 # =====================================================
